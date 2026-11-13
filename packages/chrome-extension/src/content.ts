@@ -242,22 +242,30 @@
           transform: none;
         }
 
-        /* Inputs */
+        /* Inputs & Textareas — 100% User Selectable & Writable */
+        #alphadate-hud-card input,
+        #alphadate-hud-card textarea,
+        #alphadate-hud-card select,
         .ad-input {
           width: 100%;
           padding: 9px 12px;
           border-radius: 8px;
           background: #090d14;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.15);
           color: #fff;
           font-size: 12px;
           box-sizing: border-box;
           outline: none;
+          user-select: text !important;
+          -webkit-user-select: text !important;
+          cursor: text !important;
+          pointer-events: auto !important;
         }
 
         .ad-input:focus {
           border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+          background: #0d131f;
         }
 
         /* Result Cards */
@@ -407,6 +415,19 @@
           <!-- TAB 1: ВЕДЕНИЕ ЧАТА -->
           <div id="ad-tab-content-chat" style="display:flex; flex-direction:column; gap:12px;">
             
+            <!-- Quick API Key Banner (Direct & Editable on Main Tab) -->
+            <div id="ad-quick-key-banner" class="ad-section" style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(59, 130, 246, 0.35); padding: 10px 12px; border-radius: 10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+                <span style="font-size:12px; font-weight:700; color:#60a5fa;">🔑 Google Gemini API Ключ:</span>
+                <span id="ad-quick-key-status" style="font-size:11px; font-weight:700; color:#ef4444;">❌ Ключ не введен</span>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <input type="text" id="ad-quick-api-key" class="ad-input" style="font-family:monospace; color:#34d399; font-size:12px;" placeholder="Вставьте сюда API ключ (AIzaSy...)">
+                <button type="button" id="ad-btn-quick-save-key" class="ad-btn-sm" style="background:#10b981; color:#fff; font-weight:bold; white-space:nowrap; padding:6px 14px;">💾 Сохранить</button>
+              </div>
+              <small style="display:block; color:#94a3b8; font-size:10px; margin-top:4px;">Ключ надежно хранится локально в вашем браузере.</small>
+            </div>
+
             <!-- Interlocutor info -->
             <div class="ad-section" style="display:flex; justify-content:space-between; align-items:center;">
               <div>
@@ -423,15 +444,26 @@
               <span>ВЕСТИ ЧАТ / АНАЛИЗ (F8)</span>
             </button>
 
+            <!-- Auto-Send & Tools -->
+            <div style="display:flex; justify-content:space-between; align-items:center; padding: 0 4px; margin-top: -4px;">
+              <label style="font-size:11px; color:#cbd5e1; display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="ad-auto-send-toggle" style="cursor:pointer; accent-color:#3b82f6;">
+                <span>⚡ Авто-отправка после перевода</span>
+              </label>
+              <span id="ad-btn-clear-chat" style="font-size:11px; color:#60a5fa; cursor:pointer;" title="Очистить поля чата на сайте">🧹 Очистить поле</span>
+            </div>
+
             <!-- Mode & Style Selector -->
             <div style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
               <div>
                 <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px;">Стиль ответа:</label>
                 <select id="ad-mode-select" class="ad-input">
                   <option value="Универсальный">✨ Универсальный (Уют + Флирт + Вопрос)</option>
-                  <option value="Подкол / Ирония">😏 Подкол / Спор (Заставить оправдаться)</option>
+                  <option value="Подкол / Ирония">😏 Подкол / Ирония (Заставить оправдаться)</option>
                   <option value="Горячий флирт">🔥 Горячий флирт (Кокетливо + химия)</option>
                   <option value="Забота и Глубина">❤️ Забота и Глубина (Душевно о его жизни)</option>
+                  <option value="Зацепка / Смена темы">🎣 Зацепка (Если чат тухнет или он сухой)</option>
+                  <option value="Минутный чат (серия)">⏱️ Серия коротких реплик (по минутам)</option>
                   <option value="Хватка (Макс. ответ)">🎯 Хватка (Наивысший шанс ответа)</option>
                 </select>
               </div>
@@ -615,12 +647,12 @@
   // ==========================================================================
 
   function scrapeClientInfo(): any {
-    let manName = 'Мужчина', manAge = '—', manId = 'unknown', manPlace = '', girlInfo = 'Девушка';
+    let manName = 'Мужчина', manAge = '—', manId = 'unknown', manPlace = '', girlInfo = 'Девушка', balance = '';
 
     // 1. Check common chat headers
-    const chatHeader = document.querySelector('[data-testid="chat-header"], [class*="chat_head-"], [class*="ChatHeader"]');
+    const chatHeader = document.querySelector('[data-testid="chat-header"], [class*="chat_head-"], [class*="ChatHeader"], [class*="chat-header"]');
     if (chatHeader) {
-      const nameEl = chatHeader.querySelector('[data-testid="man-name"], [class*="chat_head_profile-"][class*="left-"] [class*="chat_head_profile_name-"], h2, h3');
+      const nameEl = chatHeader.querySelector('[data-testid="man-name"], [class*="chat_head_profile-"][class*="left-"] [class*="chat_head_profile_name-"], [class*="user-name"], h2, h3');
       if (nameEl) {
         const raw = (nameEl as HTMLElement).innerText || '';
         const m = raw.match(/([^,]+),\s*(\d{1,3})/);
@@ -632,27 +664,40 @@
         }
       }
 
-      const idWrap = chatHeader.querySelector('.ot4et-man-id-balance-wrap') || chatHeader;
+      const idWrap = chatHeader.querySelector('.ot4et-man-id-balance-wrap, [data-testid="balance"]') || chatHeader;
       if (idWrap) {
-        const idMatch = ((idWrap as HTMLElement).innerText || '').match(/ID\s*(\d{5,15})/i);
+        const text = (idWrap as HTMLElement).innerText || '';
+        const idMatch = text.match(/ID\s*[:]?\s*(\d{5,15})/i);
         if (idMatch) manId = idMatch[1]!.trim();
+        const bMatch = text.match(/(?:Balance|Баланс|Credits|Points|Балы)\s*[:]?\s*([\d\s.,]+)/i);
+        if (bMatch) balance = bMatch[1]!.trim();
       }
 
-      const placeEl = chatHeader.querySelector('[data-testid="man-place"]');
+      const placeEl = chatHeader.querySelector('[data-testid="man-place"], [class*="location"]');
       if (placeEl) manPlace = ((placeEl as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
     }
 
-    // 2. Extract dialogue messages
-    const msgNodes = document.querySelectorAll('[data-testid^="received-message-"], [data-testid^="sent-message-"], [class*="message-item"]');
+    // 2. Girl profile name
+    const girlEl = document.querySelector('[data-testid="girl-name"], [class*="girl_name"], [class*="lady_name"]');
+    if (girlEl) {
+      const gRaw = (girlEl as HTMLElement).innerText || '';
+      if (gRaw.trim()) girlInfo = gRaw.trim();
+    }
+
+    // 3. Extract dialogue messages
+    const msgNodes = document.querySelectorAll(
+      '[data-testid^="received-message-"], [data-testid^="sent-message-"], [class*="message-item"], [class*="message-bubble"], .message-in, .message-out, .msg-item'
+    );
     const dialogueLines: string[] = [];
 
     msgNodes.forEach((node) => {
       const testId = node.getAttribute('data-testid') || '';
-      const isMan = testId.startsWith('received-message') || node.classList.contains('received');
-      const isGirl = testId.startsWith('sent-message') || node.classList.contains('sent');
+      const className = node.className || '';
+      const isMan = testId.startsWith('received-message') || className.includes('received') || className.includes('message-in') || className.includes('incoming');
+      const isGirl = testId.startsWith('sent-message') || className.includes('sent') || className.includes('message-out') || className.includes('outgoing');
       if (!isMan && !isGirl) return;
 
-      const textNode = node.querySelector('[data-testid="message-text"]') || node;
+      const textNode = node.querySelector('[data-testid="message-text"], [class*="text"], .message-content') || node;
       const clean = ((textNode as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
       if (clean) {
         dialogueLines.push(`${isMan ? 'Мужчина' : 'Девушка (Ты)'}: ${clean}`);
@@ -661,11 +706,26 @@
 
     const cleanChat = dialogueLines.slice(-25).join('\n');
 
+    // 4. Extract last message from man
+    let lastManMessage = '';
+    for (let i = dialogueLines.length - 1; i >= 0; i--) {
+      const line = dialogueLines[i]!;
+      if (line.startsWith('Мужчина:')) {
+        lastManMessage = line.replace(/^Мужчина:\s*/, '').trim();
+        break;
+      }
+    }
+
+    // 5. Selected text on page (high-priority hook)
+    const selectedText = (window.getSelection()?.toString() || '').trim();
+
     // Update UI Card
-    const nameEl = document.getElementById('ad-man-info');
-    const girlEl = document.getElementById('ad-girl-info');
-    if (nameEl) nameEl.textContent = `${manName}, ${manAge} ${manId !== 'unknown' ? `(ID: ${manId})` : ''} ${manPlace ? `· ${manPlace}` : ''}`;
-    if (girlEl) girlEl.textContent = `Твоя анкета: ${girlInfo}`;
+    const nameLabel = document.getElementById('ad-man-info');
+    const girlLabel = document.getElementById('ad-girl-info');
+    if (nameLabel) {
+      nameLabel.textContent = `${manName}, ${manAge} ${manId !== 'unknown' ? `(ID: ${manId})` : ''} ${balance ? `💰 ${balance}` : ''} ${manPlace ? `· ${manPlace}` : ''}`;
+    }
+    if (girlLabel) girlLabel.textContent = `Твоя анкета: ${girlInfo}`;
 
     const clientObj = {
       id: manId !== 'unknown' ? `ID_${manId}` : `${manName}_${manAge}`,
@@ -673,8 +733,11 @@
       name: manName,
       dob: manAge,
       location: manPlace,
+      balance,
       girlInfo,
       chat: cleanChat,
+      lastManMessage,
+      selectedText,
       summary: cleanChat ? cleanChat.split('\n').slice(-2).join(' | ') : 'Новый чат',
       updatedAt: Date.now(),
     };
@@ -683,8 +746,27 @@
     return clientObj;
   }
 
+  function getModeGuideline(mode: string): string {
+    switch (mode) {
+      case 'Подкол / Ирония':
+        return 'Игривая женская дерзость, легкий подкол и фрейм-контроль. Поставь его в позицию, где ему хочется оправдаться или с улыбкой доказать, что он настоящий мужчина.';
+      case 'Горячий флирт':
+        return 'Чувственный, кокетливый и манящий тон. Романтическая химия, комплимент его голосу/характеру, лёгкий намёк на созвон или личный контакт без пошлости.';
+      case 'Забота и Глубина':
+        return 'Глубокий душевный интерес к его дню, настроению или мыслям. Тон заботливой, уютной девушки, которой хочется довериться (для взрослых и состоятельных мужчин).';
+      case 'Зацепка / Смена темы':
+        return 'Резкий слом шаблона! Если он отвечает сухо ("ок", "ясно") или чат тухнет, перехвати инициативу парадоксальным вопросом или яркой интригой.';
+      case 'Минутный чат (серия)':
+        return 'Короткие динамичные фразы (1-2 коротких предложения), как живые сообщения в мессенджере, побуждающие моментально ответить (удержание платного таймера).';
+      case 'Хватка (Макс. ответ)':
+        return 'Максимально цепкая фраза с сильным психологическим триггером (комплимент эго + неожиданный открытый вопрос).';
+      default:
+        return 'Универсальный живой женский стиль: уют, лёгкий кокетливый вайб, искренний интерес к его реплике и открытый вопрос в конце.';
+    }
+  }
+
   // ==========================================================================
-  // 6. "⚡ ВЕСТИ ЧАТ" — The Complete AI Pipeline
+  // 6. "⚡ ВЕСТИ ЧАТ" — The Elite AI Pipeline
   // ==========================================================================
 
   async function conductChat(): Promise<void> {
@@ -694,47 +776,67 @@
       btn.innerHTML = '<span>⏳</span><span>АНАЛИЗИРУЮ ДИАЛОГ...</span>';
     }
 
-    showStatus('Чтение чата и анкеты...', 'loading');
+    showStatus('Чтение чата и контекста...', 'loading');
 
     try {
       const client = scrapeClientInfo();
       const apiKey = await getApiKey();
-      const kb = await getKB();
 
+      if (!apiKey || apiKey.trim().length < 10) {
+        showStatus('⚠️ Введите API ключ в поле вверху и нажмите "Сохранить"!', 'error');
+        const qInput = document.getElementById('ad-quick-api-key') as HTMLInputElement | null;
+        if (qInput) {
+          qInput.focus();
+          qInput.style.borderColor = '#ef4444';
+        }
+        return;
+      }
+
+      const kb = await getKB();
       const customPrompt = (document.getElementById('ad-custom-prompt') as HTMLInputElement)?.value.trim() || '';
       const mode = (document.getElementById('ad-mode-select') as HTMLSelectElement)?.value || currentMode;
       const lang = (document.getElementById('ad-lang-select') as HTMLSelectElement)?.value || 'Русский + Английский';
 
       // 1. Strict Priority Ladder System Prompt
-      const systemPrompt = `Ты — элитный суфлер для оператора на сайте знакомств. Общаешься от лица девушки (${client.girlInfo}) с мужчиной (${client.name}, возраст: ${client.dob}).
-СТИЛЬ / НАСТРОЕНИЕ: ${mode}
+      const systemPrompt = `Ты — элитный профессиональный суфлер для оператора на сайте знакомств. 
+Ты общаешься от лица молодой привлекательной девушки (${client.girlInfo || 'красивая, интересная девушка'}) с мужчиной (${client.name}, возраст: ${client.dob || 'не указан'}, город: ${client.location || 'не указан'}).
+
+РЕЖИМ ОБЩЕНИЯ И ТОН: ${mode}
 ЯЗЫК: ${lang}
 
-ПРАВИЛА НАПИСАНИЯ:
-1. Пиши живо, дерзко, тепло и естественно, как будто реальная девушка пишет с телефона за 10 секунд.
-2. ЖЕСТКИЙ ЗАПРЕТ НА ШАБЛОНЫ: Запрещено писать "Привет красавчик", "Мне понравилась твоя анкета", "Как проходит день?", "Что ищешь?".
-3. СТРОГИЙ ВЫХОД — РОВНО 4 ВАРИАНТА в формате JSON:
-   - short_ru: Лаконичный русский ответ с крючком (до 150 символов)
-   - short_en: Живая английская версия short_ru (до 150 символов)
-   - long_ru: Развернутый вовлекающий ответ с легким подколом или интригой (больше 150 символов)
-   - long_en: Развернутая английская адаптация (больше 150 символов)
-   - response_score: Оценка вероятности ответа (от 88 до 99)
-   - hook_note: Одно предложение, за какую именно мысль из чата ты зацепился.
+ГЛАВНАЯ ЦЕЛЬ:
+Максимально разогреть интерес мужчины, вызвать эмоциональный отклик и сделать так, чтобы он моментально захотел ответить.
+Пиши не как робот или служба поддержки, а как живая, притягательная девушка с телефоном в руках.
 
-${kb ? `СИСТЕМНЫЕ ИНСТРУКЦИИ ОПЕРАТОРА:\n${kb}\n` : ''}
-${customPrompt ? `ПОЖЕЛАНИЕ ОПЕРАТОРА (ОБЯЗАТЕЛЬНО УЧТИ): ${customPrompt}\n` : ''}
+ЖЕСТКИЕ ПРАВИЛА:
+1. Пиши СТРОГО в женском роде (окончания: -ла, -лась, женская интонация, лёгкое кокетство).
+2. СТРОЖАЙШИЙ ЗАПРЕТ НА КЛИШЕ: Запрещено писать "Привет красавчик", "Мне понравилась твоя анкета", "Как проходит день?", "Что ищешь на сайте?", "Чем занимаешься по жизни?". Это убивает интерес.
+3. ПРИОРИТЕТ ЗАЦЕПКИ:
+   - Если мужчина только что что-то написал — ОБЯЗАТЕЛЬНО оттолкнись от его последней реплики!
+   - Если оператор выделил текст на странице — строй ответ вокруг этого факта!
+   - Любой ответ ОБЯЗАН заканчиваться открытым цепляющим вопросом или игривым вызовом, на который нельзя ответить просто "да" или "нет".
+4. СТИЛЬ РЕЖИМА "${mode}":
+   ${getModeGuideline(mode)}
 
-ИСТОРИЯ ЧАТА:
-${client.chat || 'Новый диалог, начни с яркой интриги или подкола по анкете.'}
+${kb ? `СИСТЕМНЫЕ ИНСТРУКЦИИ ОПЕРАТОРА (ОБЯЗАТЕЛЬНО УЧТИ):\n${kb}\n` : ''}
+${client.selectedText ? `ВЫДЕЛЕННЫЙ ОПЕРАТОРОМ ТЕКСТ / ЗАЦЕПКА ИЗ АНКЕТЫ (НАИВЫСШИЙ ПРИОРИТЕТ):\n"${client.selectedText}"\n` : ''}
+${customPrompt ? `КОНКРЕТНОЕ ПОЖЕЛАНИЕ ОПЕРАТОРА:\n"${customPrompt}"\n` : ''}
 
-Верни ТОЛЬКО валидный JSON:
+ИСТОРИЯ ПЕРЕПИСКИ (последние реплики):
+${client.chat || 'Новый диалог! Начни с яркой интриги, кокетливого наблюдения или лёгкой женской провокации.'}
+
+ПОСЛЕДНЯЯ РЕПЛИКА МУЖЧИНЫ:
+"${client.lastManMessage || 'Мужчина пока молчит или это первое сообщение'}"
+
+ОТВЕТЬ СТРОГО В ВАЛИДНОМ JSON (без лишнего текста вокруг):
 {
-  "short_ru": "...",
-  "short_en": "...",
-  "long_ru": "...",
-  "long_en": "...",
-  "response_score": 94,
-  "hook_note": "..."
+  "short_ru": "Живой вовлекающий ответ на русском (1-2 предложения с крючком, до 140 символов)",
+  "short_en": "Качественный разговорный английский перевод short_ru",
+  "long_ru": "Развернутый эмоциональный ответ на русском (2-3 предложения с раскрытием темы и открытым вопросом)",
+  "long_en": "Качественная разговорная английская адаптация long_ru",
+  "response_score": 96,
+  "man_mood": "Краткая характеристика настроения мужчины (например: Кокетничает / Скептичен / Одинокий дед / Ждет комплимента)",
+  "tactical_tip": "Тактический совет оператору (например: Не дави на встречу, расспроси про его яхту / Предложи голосовое)"
 }`;
 
       showStatus('Генерация через Gemini...', 'loading');
@@ -785,16 +887,24 @@ ${client.chat || 'Новый диалог, начни с яркой интриг
     const root = document.getElementById('ad-results-container')!;
     root.innerHTML = '';
 
-    const hookHeader = document.createElement('div');
-    hookHeader.style.cssText = 'padding:6px 10px; background:rgba(59,130,246,0.1); border-radius:8px; font-size:11px; color:#93c5fd; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;';
-    hookHeader.innerHTML = `<span>🎣 <b>Крючок:</b> ${data.hook_note || 'По контексту беседы'}</span><span style="font-weight:800; color:#34d399;">${data.response_score || 92}% ответ</span>`;
-    root.appendChild(hookHeader);
+    // Tactical Banner
+    const tacticalCard = document.createElement('div');
+    tacticalCard.style.cssText = 'padding:10px 12px; background:rgba(30,41,59,0.85); border:1px solid rgba(59,130,246,0.3); border-radius:10px; margin-bottom:10px; display:flex; flex-direction:column; gap:4px;';
+    tacticalCard.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:12px; font-weight:bold; color:#60a5fa;">🎯 Тактический разбор:</span>
+        <span style="font-size:11px; font-weight:800; color:#34d399; background:rgba(52,211,153,0.15); padding:2px 8px; border-radius:8px;">🔥 Шанс ответа: ${data.response_score || 95}%</span>
+      </div>
+      <div style="font-size:11px; color:#cbd5e1;"><b>Настроение мужчины:</b> ${data.man_mood || 'Заинтересован, вовлечен'}</div>
+      <div style="font-size:11px; color:#f59e0b;"><b>Совет:</b> ${data.tactical_tip || 'Держи инициативу и задай открытый встречный вопрос'}</div>
+    `;
+    root.appendChild(tacticalCard);
 
     const variants = [
-      { key: 'short_ru', label: '🇷🇺 RU Короткий (до 150)', tag: 'ad-tag-ru', text: data.short_ru, hotkey: 'Alt+1' },
-      { key: 'short_en', label: '🇬🇧 EN Короткий (до 150)', tag: 'ad-tag-en', text: data.short_en, hotkey: 'Alt+2' },
-      { key: 'long_ru', label: '🇷🇺 RU Развернутый (150+)', tag: 'ad-tag-ru', text: data.long_ru, hotkey: 'Alt+3' },
-      { key: 'long_en', label: '🇬🇧 EN Развернутый (150+)', tag: 'ad-tag-en', text: data.long_en, hotkey: 'Alt+4' },
+      { key: 'short_ru', label: '🇷🇺 RU Короткий (до 140)', tag: 'ad-tag-ru', text: data.short_ru, hotkey: 'Alt+1', lang: 'ru' as const },
+      { key: 'short_en', label: '🇬🇧 EN Короткий (до 140)', tag: 'ad-tag-en', text: data.short_en, hotkey: 'Alt+2', lang: 'en' as const },
+      { key: 'long_ru', label: '🇷🇺 RU Развернутый (2-3 фразы)', tag: 'ad-tag-ru', text: data.long_ru, hotkey: 'Alt+3', lang: 'ru' as const },
+      { key: 'long_en', label: '🇬🇧 EN Развернутый (2-3 фразы)', tag: 'ad-tag-en', text: data.long_en, hotkey: 'Alt+4', lang: 'en' as const },
     ];
 
     variants.forEach((v, idx) => {
@@ -804,17 +914,17 @@ ${client.chat || 'Новый диалог, начни с яркой интриг
       card.innerHTML = `
         <div class="ad-variant-header">
           <span class="ad-tag ${v.tag}">${v.label}</span>
-          <span style="font-size:10px; color:#64748b;">${v.text.length} симв. · ${v.hotkey}</span>
+          <span style="font-size:10px; color:#94a3b8;">${v.text.length} симв. · ${v.hotkey}</span>
         </div>
-        <div class="ad-variant-text">${v.text}</div>
+        <div class="ad-variant-text" style="font-size:13px; line-height:1.45; color:#f1f5f9;">${v.text}</div>
         <div class="ad-actions">
-          <button type="button" class="ad-btn-sm ad-btn-insert" data-idx="${idx}">Вставить в чат (${v.hotkey})</button>
-          <button type="button" class="ad-btn-sm ad-btn-copy" data-text="${encodeURIComponent(v.text)}">📋 Копировать</button>
+          <button type="button" class="ad-btn-sm ad-btn-insert" style="background:#2563eb; color:#fff; font-weight:bold;">⚡ Вставить ${v.lang === 'ru' ? 'в RU' : 'в ENG'} (${v.hotkey})</button>
+          <button type="button" class="ad-btn-sm ad-btn-copy">📋 Копировать</button>
         </div>
       `;
 
       card.querySelector('.ad-btn-insert')!.addEventListener('click', () => {
-        insertTextIntoChat(v.text);
+        insertTextIntoChat(v.text, v.lang);
       });
 
       card.querySelector('.ad-btn-copy')!.addEventListener('click', (e) => {
@@ -830,15 +940,16 @@ ${client.chat || 'Новый диалог, начни с яркой интриг
 
   function insertVariantByIndex(index: number): void {
     if (!lastGeneratedResponses) return;
-    const list = [
-      lastGeneratedResponses.short_ru,
-      lastGeneratedResponses.short_en,
-      lastGeneratedResponses.long_ru,
-      lastGeneratedResponses.long_en,
-    ].filter(Boolean);
+    const variants = [
+      { text: lastGeneratedResponses.short_ru, lang: 'ru' as const },
+      { text: lastGeneratedResponses.short_en, lang: 'en' as const },
+      { text: lastGeneratedResponses.long_ru, lang: 'ru' as const },
+      { text: lastGeneratedResponses.long_en, lang: 'en' as const },
+    ];
 
-    if (list[index]) {
-      insertTextIntoChat(list[index]);
+    const chosen = variants[index];
+    if (chosen && chosen.text) {
+      insertTextIntoChat(chosen.text, chosen.lang);
     }
   }
 
@@ -846,28 +957,52 @@ ${client.chat || 'Новый диалог, начни с яркой интриг
   // 8. Auto-Insert into Web Page Chat & Auto-Translate Click
   // ==========================================================================
 
-  function insertTextIntoChat(text: string): boolean {
+  function insertTextIntoChat(text: string, lang: 'ru' | 'en' = 'ru'): boolean {
     // 1. Dual textarea check (e.g. ChatOS with RU left, EN right, and translation arrow)
-    const textareas = Array.from(document.querySelectorAll('textarea[data-testid="text"]')) as HTMLTextAreaElement[];
-    if (textareas.length >= 2) {
-      const leftTextarea = textareas[0]!;
+    const textareas = Array.from(document.querySelectorAll('textarea[data-testid="text"]'))
+      .filter((node: any) => {
+        const rect = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return rect.width > 20 && rect.height > 20 && style.display !== 'none' && style.visibility !== 'hidden';
+      })
+      .sort((a: any, b: any) => a.getBoundingClientRect().left - b.getBoundingClientRect().left) as HTMLTextAreaElement[];
+
+    const leftTextarea = textareas[0] || null;
+    const rightTextarea = textareas[1] || null;
+
+    if (lang === 'en' && rightTextarea) {
+      rightTextarea.focus();
+      setTextareaNativeValue(rightTextarea, text);
+      showToast('✓ Вставлено в правое (ENG) поле!');
+      checkAutoSend();
+      return true;
+    }
+
+    if (leftTextarea) {
       leftTextarea.focus();
       setTextareaNativeValue(leftTextarea, text);
 
       // Auto-click translation arrow
       const arrows = Array.from(document.querySelectorAll('[data-testid="change-languages-btn"]')) as HTMLElement[];
       if (arrows.length > 0) {
-        setTimeout(() => arrows[0]?.click(), 250);
+        setTimeout(() => {
+          arrows[0]?.click();
+          showToast('✓ Вставлено в RU поле и переведено!');
+          checkAutoSend();
+        }, 220);
+      } else {
+        showToast('✓ Вставлено в поле ввода!');
+        checkAutoSend();
       }
-      showToast('✓ Вставлено и отправлено на перевод!');
       return true;
     }
 
     // 2. Generic Single Textarea / Input
     const activeEl = document.activeElement as HTMLElement | null;
     if (activeEl instanceof HTMLTextAreaElement || (activeEl instanceof HTMLInputElement && activeEl.type === 'text')) {
-      setTextareaNativeValue(activeEl as HTMLTextAreaElement, text);
+      setTextareaNativeValue(activeEl as any, text);
       showToast('✓ Вставлено в активное поле!');
+      checkAutoSend();
       return true;
     }
 
@@ -878,30 +1013,48 @@ ${client.chat || 'Новый диалог, начни с яркой интриг
       if (el) {
         el.focus();
         if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
-          setTextareaNativeValue(el as HTMLTextAreaElement, text);
+          setTextareaNativeValue(el as any, text);
         } else if (el.isContentEditable) {
           el.innerText = text;
           el.dispatchEvent(new Event('input', { bubbles: true }));
         }
         showToast('✓ Вставлено в поле ввода!');
+        checkAutoSend();
         return true;
       }
     }
 
     navigator.clipboard.writeText(text);
-    showToast('✓ Скопировано в буфер обмена!');
+    showToast('📋 Поле не найдено. Текст скопирован в буфер!');
     return false;
   }
 
-  function setTextareaNativeValue(textarea: HTMLTextAreaElement, val: string): void {
-    const proto = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-    if (proto?.set) {
-      proto.set.call(textarea, val);
+  function checkAutoSend(): void {
+    const autoSend = (document.getElementById('ad-auto-send-toggle') as HTMLInputElement)?.checked;
+    if (!autoSend) return;
+    setTimeout(() => {
+      const sendBtn = document.querySelector('[data-testid="send-btn"], .chat-send-btn, button[class*="send"]') as HTMLElement | null;
+      if (sendBtn) {
+        sendBtn.click();
+        showToast('🚀 Сообщение автоматически отправлено!');
+      }
+    }, 900);
+  }
+
+  function setTextareaNativeValue(element: HTMLTextAreaElement | HTMLInputElement, val: string): void {
+    const proto = Object.getPrototypeOf(element);
+    const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (descriptor?.set) {
+      descriptor.set.call(element, val);
     } else {
-      textarea.value = val;
+      element.value = val;
     }
-    textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: val }));
-    textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    const tracker = (element as any)._valueTracker;
+    if (tracker) {
+      tracker.setValue(val);
+    }
+    element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: val }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   // ==========================================================================
@@ -1086,12 +1239,81 @@ Return ONLY valid JSON:
     const key = await getApiKey();
     const kb = await getKB();
     const keyInput = document.getElementById('ad-api-key') as HTMLInputElement | null;
+    const quickKeyInput = document.getElementById('ad-quick-api-key') as HTMLInputElement | null;
+    const quickStatus = document.getElementById('ad-quick-key-status');
     const kbInput = document.getElementById('ad-kb-text') as HTMLTextAreaElement | null;
+
     if (keyInput) keyInput.value = key;
+    if (quickKeyInput) quickKeyInput.value = key;
+
+    if (quickStatus) {
+      if (key && key.trim().length > 10) {
+        quickStatus.textContent = '✅ Ключ сохранен и активен';
+        quickStatus.style.color = '#34d399';
+      } else {
+        quickStatus.textContent = '❌ Ключ не введен';
+        quickStatus.style.color = '#ef4444';
+      }
+    }
     if (kbInput) kbInput.value = kb;
   }
 
   function setupActions(): void {
+    // 1. Isolate all inputs from host page scripts (stops event stealing/blocking)
+    const card = document.getElementById('alphadate-hud-card');
+    if (card) {
+      const inputs = card.querySelectorAll('input, textarea, select');
+      inputs.forEach((input) => {
+        ['mousedown', 'mouseup', 'click', 'dblclick', 'keydown', 'keyup', 'keypress', 'input', 'paste', 'cut', 'copy'].forEach((evt) => {
+          input.addEventListener(evt, (e) => {
+            e.stopPropagation();
+          }, { capture: true });
+        });
+      });
+    }
+
+    // 2. Quick Save Key Button on Tab 1
+    const quickSaveBtn = document.getElementById('ad-btn-quick-save-key');
+    if (quickSaveBtn) {
+      quickSaveBtn.onclick = async () => {
+        const qInput = document.getElementById('ad-quick-api-key') as HTMLInputElement | null;
+        const key = (qInput?.value || '').trim();
+        if (!key) {
+          showToast('⚠️ Введите ваш Gemini API ключ!');
+          return;
+        }
+        await chrome.storage.local.set({ [STORAGE_API_KEY]: key });
+        await loadSettingsToUI();
+        showToast('✓ Gemini API ключ успешно сохранен!');
+      };
+    }
+
+    // Quick Key Input Enter key
+    const quickInput = document.getElementById('ad-quick-api-key') as HTMLInputElement | null;
+    if (quickInput) {
+      quickInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          quickSaveBtn?.click();
+        }
+      });
+    }
+
+    // Clear chat inputs on website button
+    const clearChatBtn = document.getElementById('ad-btn-clear-chat');
+    if (clearChatBtn) {
+      clearChatBtn.onclick = () => {
+        const textareas = document.querySelectorAll('textarea[data-testid="text"], textarea, input[type="text"]');
+        textareas.forEach((t) => {
+          if (t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement) {
+            setTextareaNativeValue(t, '');
+          }
+        });
+        showToast('🧹 Поля ввода на сайте очищены');
+      };
+    }
+
+    // Conduct chat button
     document.getElementById('ad-btn-conduct')!.onclick = conductChat;
     document.getElementById('ad-btn-refresh')!.onclick = () => {
       scrapeClientInfo();
@@ -1104,14 +1326,15 @@ Return ONLY valid JSON:
       showToast('✓ Результаты очищены');
     };
 
-    // Save Settings
+    // Save Settings on Tab 4
     document.getElementById('ad-btn-save-settings')!.onclick = async () => {
       const key = (document.getElementById('ad-api-key') as HTMLInputElement).value.trim();
       const kb = (document.getElementById('ad-kb-text') as HTMLTextAreaElement).value.trim();
       await chrome.storage.local.set({
-        [STORAGE_API_KEY]: key || DEFAULT_KEY,
+        [STORAGE_API_KEY]: key,
         [STORAGE_KB_KEY]: kb,
       });
+      await loadSettingsToUI();
       showToast('✓ Настройки сохранены!');
     };
 

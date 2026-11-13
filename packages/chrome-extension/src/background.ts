@@ -382,5 +382,12 @@ async function safeJson(response: Response): Promise<any> {
 }
 
 function extractError(data: any, status: number): string {
-  return data?.error?.message || data?.raw || `Ошибка Gemini API (${status})`;
+  const msg = data?.error?.message || data?.raw || `Ошибка Gemini API (${status})`;
+  if (status === 400 && /API_KEY_INVALID|API key not valid|keyInvalid/i.test(msg)) {
+    return 'Неверный API ключ Gemini. Пожалуйста, проверьте правильность ключа и сохраните его на панели суфлера.';
+  }
+  if (status === 429) {
+    return 'Превышен лимит запросов Gemini (429 Rate Limit). Подождите несколько секунд и попробуйте снова.';
+  }
+  return msg;
 }
