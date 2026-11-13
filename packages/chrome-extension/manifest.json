@@ -1,19 +1,23 @@
 {
   "manifest_version": 3,
-  "name": "AlphaDate Personal AI — Элитный Суфлер",
-  "version": "2.0.0",
-  "description": "Плавающий интерактивный AI-суфлер для операторов с авто-ведением чата, глубоким анализом анкет, мультимодальностью и горячими клавишами F1-F12",
+  "name": "AlphaDate Personal AI — Command Center & CRM Суфлер",
+  "version": "3.0.0",
+  "description": "Автономный Command Center для управления диалогами CRM, многопоточный AI-автопилот с независимой памятью и суфлер",
   "permissions": [
     "storage",
     "activeTab",
     "tabs",
-    "scripting"
+    "scripting",
+    "sidePanel"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "action": {
-    "default_title": "AlphaDate AI (F8 / F12)"
+    "default_title": "Открыть AlphaDate Command Center"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "background": {
     "service_worker": "background.js",
@@ -28,6 +32,18 @@
         "content.js"
       ],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "command-center.html",
+        "sidepanel.html",
+        "assets/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

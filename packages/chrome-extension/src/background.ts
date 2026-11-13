@@ -1,13 +1,258 @@
 /**
- * AlphaDate Personal AI — Background Service Worker v2.0
- * High-performance Gemini Multi-Model Routing, Multimodal Vision, and Screen Capture
+ * AlphaDate Personal AI — Background Service Worker v3.0
+ * Features:
+ * - Real-Time Command Center Multi-Dialogue Coordinator (3+ independent dialogues)
+ * - Bidirectional CRM Synchronization & Message Dispatching
+ * - Autonomous Autopilot Queue (per-dialogue independent queues)
+ * - Independent Dossier & Memory Management
+ * - Multi-Model Fallback Cascade (Gemini Flash / Pro)
  */
 
+import { SyncedDialogue, SyncedMessage, AutopilotLogEntry } from '@alphadate/contracts';
+
 const GEMINI_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
+const STORAGE_SYNCED_DIALOGUES = 'alphadate_synced_dialogues_v1';
+const STORAGE_API_KEY = 'ai_alphadate_custom_api_key_v1';
+
+// In-memory dialogue processing queues (isolated per dialogue ID)
+const dialogueProcessingQueues = new Map<string, Promise<any>>();
+
+// Seed dialogues for immediate 3-dialogue operational readiness
+const INITIAL_SEED_DIALOGUES: Record<string, SyncedDialogue> = {
+  '8eubddc1-ho1vgjxr-xr65f2lp-1ayvz25q': {
+    id: '8eubddc1-ho1vgjxr-xr65f2lp-1ayvz25q',
+    platform: 'alpha.date',
+    interlocutor: {
+      id: '8eubddc1-ho1vgjxr-xr65f2lp-1ayvz25q',
+      name: 'Luis Lopez',
+      age: '26',
+      location: 'Mexico City, Mexico',
+      status: 'online',
+    },
+    operatorProfile: {
+      name: 'Huang',
+      id: '1353686369',
+      location: 'Mexico City',
+    },
+    messages: [
+      {
+        id: 'msg_l1',
+        sender: 'girl',
+        text: 'Hey Luis! Loved your energy in the photos. Are you always this adventurous?',
+        timestamp: Date.now() - 3600000,
+        deliveredToCrm: true,
+      },
+      {
+        id: 'msg_l2',
+        sender: 'man',
+        text: 'Haha thanks! Yeah I love racing and extreme sports. But I hate waiting on this app.',
+        timestamp: Date.now() - 1800000,
+        deliveredToCrm: true,
+      },
+      {
+        id: 'msg_l3',
+        sender: 'girl',
+        text: 'Patience makes the sweetest reward, you know 😉 What kind of racing do you do?',
+        timestamp: Date.now() - 900000,
+        deliveredToCrm: true,
+      },
+      {
+        id: 'msg_l4',
+        sender: 'man',
+        text: "I'M GIVING YOU ONE LAST CHANCE TO WRITE DOWN MY PHONE NUMBER AND MOVE TO WHATSAPP!",
+        timestamp: Date.now() - 60000,
+        deliveredToCrm: true,
+      },
+    ],
+    lastActivity: Date.now() - 60000,
+    unread: true,
+    autopilotEnabled: false,
+    autopilotLogs: [
+      {
+        id: 'log_l1',
+        timestamp: Date.now() - 60000,
+        action: 'Входящее сообщение',
+        details: 'Мужчина требует номер телефона капслоком. Сработала защита anti-offsite.',
+        status: 'warning',
+      },
+      {
+        id: 'log_l2',
+        timestamp: Date.now() - 55000,
+        action: 'AI-анализ',
+        details: 'Определен архетип: Агрессивный напор. Применен фрейм-контроль.',
+        status: 'info',
+      },
+    ],
+    dossier: {
+      archetype: '🔥 Агрессивный напор / Давит на телефон',
+      strategy: '🛡️ Женский фрейм-контроль: отказ с дерзким вызовом',
+      facts: ['🏎️ Увлекается экстремальными гонками', '⚡ Очень нетерпеливый', '📍 Мехико'],
+      summary: 'Молодой парень 26 лет. Давит на передачу контактов. Требуется удерживать высокую женскую планку.',
+    },
+    draftReply: {
+      textEn: "Whoa, someone is in a serious rush! 😉 You think I give my private number just because a man types in all caps? You haven't even made me laugh yet. Prove you're worth the chase first!",
+      textRu: "Воу, кто-то очень спешит! 😉 Думаешь, я даю свой личный номер только потому, что мужчина пишет капслоком? Ты меня даже рассмешить толком не успел. Докажи сначала, что ты этого стоишь!",
+      generatedAt: Date.now() - 50000,
+    },
+  },
+  'c4f8bb2a-71da-45e9-9112-f04b2b8109ad': {
+    id: 'c4f8bb2a-71da-45e9-9112-f04b2b8109ad',
+    platform: 'alpha.date',
+    interlocutor: {
+      id: 'c4f8bb2a-71da-45e9-9112-f04b2b8109ad',
+      name: 'David Miller',
+      age: '34',
+      location: 'New York, USA',
+      status: 'online',
+    },
+    operatorProfile: {
+      name: 'Huang',
+      id: '1353686369',
+      location: 'Mexico City',
+    },
+    messages: [
+      {
+        id: 'msg_d1',
+        sender: 'man',
+        text: 'Good evening! Your smile caught my attention while I was sketching a new loft design.',
+        timestamp: Date.now() - 7200000,
+        deliveredToCrm: true,
+      },
+      {
+        id: 'msg_d2',
+        sender: 'girl',
+        text: 'An architect? That explains the keen eye for beauty) What style of architecture inspires you most?',
+        timestamp: Date.now() - 5400000,
+        deliveredToCrm: true,
+      },
+      {
+        id: 'msg_d3',
+        sender: 'man',
+        text: 'I specialize in minimalist Scandinavian lofts with big windows and cozy fireplaces. Would you ever live in a home like that?',
+        timestamp: Date.now() - 120000,
+        deliveredToCrm: true,
+      },
+    ],
+    lastActivity: Date.now() - 120000,
+    unread: false,
+    autopilotEnabled: true,
+    autopilotLogs: [
+      {
+        id: 'log_d1',
+        timestamp: Date.now() - 120000,
+        action: 'Входящее сообщение',
+        details: 'David Miller спросил про идеальный лофт.',
+        status: 'info',
+      },
+      {
+        id: 'log_d2',
+        timestamp: Date.now() - 110000,
+        action: 'Автопилот: генерация ответа',
+        details: 'Сформирован ответ с романтическим подтекстом.',
+        status: 'success',
+      },
+    ],
+    dossier: {
+      archetype: '🎨 Зрелый эстет / Романтик',
+      strategy: '❤️ Теплый уют и визуализация совместного пространства',
+      facts: ['🏛️ Архитектор лофтов', '☕ Любит скандинавский минимализм', '🗽 Нью-Йорк'],
+      summary: 'Успешный архитектор 34 года, ищет душевное общение и эстетическую совместимость.',
+    },
+    draftReply: {
+      textEn: "A fireplace and floor-to-ceiling windows? You just described my absolute dream evening. Only if there is hot cocoa and good jazz playing. What's your favourite detail in that loft?",
+      textRu: 'Камин и панорамные окна? Ты только что описал вечер моей мечты. Но только если там есть горячее какао и джаз. Какая твоя любимая деталь в этом проекте?',
+      generatedAt: Date.now() - 100000,
+    },
+  },
+  'fa9012bc-e781-4209-ba54-cc190284ab91': {
+    id: 'fa9012bc-e781-4209-ba54-cc190284ab91',
+    platform: 'alpha.date',
+    interlocutor: {
+      id: 'fa9012bc-e781-4209-ba54-cc190284ab91',
+      name: 'Marco Rossi',
+      age: '29',
+      location: 'Milan, Italy',
+      status: 'online',
+    },
+    operatorProfile: {
+      name: 'Huang',
+      id: '1353686369',
+      location: 'Mexico City',
+    },
+    messages: [
+      {
+        id: 'msg_m1',
+        sender: 'girl',
+        text: 'Ciao Marco! Tell me the truth: do you make the best pasta in Milan or do you leave that to nonna?',
+        timestamp: Date.now() - 10000000,
+        deliveredToCrm: true,
+      },
+      {
+        id: 'msg_m2',
+        sender: 'man',
+        text: "Haha, don't tell nonna, but my truffle tagliolini can make any woman fall in love in 10 minutes 😉",
+        timestamp: Date.now() - 300000,
+        deliveredToCrm: true,
+      },
+    ],
+    lastActivity: Date.now() - 300000,
+    unread: false,
+    autopilotEnabled: false,
+    autopilotLogs: [
+      {
+        id: 'log_m1',
+        timestamp: Date.now() - 300000,
+        action: 'Входящее сообщение',
+        details: 'Marco хвастается пастой с трюфелями.',
+        status: 'info',
+      },
+    ],
+    dossier: {
+      archetype: '😏 Харизматичный итальянец / Игрок',
+      strategy: '✨ Игривая дерзость и вызов кулинарным навыкам',
+      facts: ['🍝 Готовит трюфельную пасту', '🇮🇹 Милан', '🐶 Лабрадор Лео'],
+      summary: 'Харизматичный итальянец с хорошим чувством юмора, любит кулинарию и красивую жизнь.',
+    },
+    draftReply: {
+      textEn: "Ten minutes? That is a bold promise, signore! I have very high culinary standards, so you'd better have the wine already poured. What wine would you pair with that?",
+      textRu: 'Десять минут? Смелое обещание, синьор! У меня очень высокие кулинарные стандарты, так что вино уже должно быть налито. Какое вино ты к этому подашь?',
+      generatedAt: Date.now() - 250000,
+    },
+  },
+};
+
+// ============================================================================
+// Dialogue Storage Helpers
+// ============================================================================
+
+async function getStoredDialogues(): Promise<Record<string, SyncedDialogue>> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([STORAGE_SYNCED_DIALOGUES], (result) => {
+      let data = result[STORAGE_SYNCED_DIALOGUES];
+      if (!data || Object.keys(data).length === 0) {
+        data = { ...INITIAL_SEED_DIALOGUES };
+        chrome.storage.local.set({ [STORAGE_SYNCED_DIALOGUES]: data });
+      }
+      resolve(data);
+    });
+  });
+}
+
+async function saveStoredDialogues(dialogues: Record<string, SyncedDialogue>): Promise<void> {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ [STORAGE_SYNCED_DIALOGUES]: dialogues }, () => resolve());
+  });
+}
+
+function broadcastToCommandCenter(type: string, payload: any) {
+  chrome.runtime.sendMessage({ type, payload }).catch(() => {});
+}
 
 // Auto-inject content script into all existing HTTP/HTTPS tabs on install/update
 chrome.runtime.onInstalled.addListener(async () => {
   try {
+    const dialogues = await getStoredDialogues();
+    console.log(`[AlphaDate] Background initialized. ${Object.keys(dialogues).length} dialogues ready.`);
     const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
     for (const tab of tabs) {
       if (tab.id) {
@@ -22,27 +267,94 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 });
 
-// Listen to extension icon click -> toggle overlay on page (with fallback injection)
+// Extension action icon click -> Open Command Center window
 chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id) return;
-  try {
-    await chrome.tabs.sendMessage(tab.id, { type: 'ALPHADATE_TOGGLE_MENU' });
-  } catch (err) {
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['content.js']
-      });
-      setTimeout(() => {
-        chrome.tabs.sendMessage(tab.id!, { type: 'ALPHADATE_TOGGLE_MENU' }).catch(() => {});
-      }, 150);
-    } catch (e) {
-      console.warn('[AlphaDate] executeScript failed on action click:', e);
-    }
-  }
+  await openCommandCenterWindow();
 });
 
+async function openCommandCenterWindow(): Promise<void> {
+  const url = chrome.runtime.getURL('command-center.html');
+  const existingTabs = await chrome.tabs.query({ url });
+  if (existingTabs.length > 0 && existingTabs[0]?.id) {
+    if (existingTabs[0].windowId) {
+      await chrome.windows.update(existingTabs[0].windowId, { focused: true });
+    }
+    await chrome.tabs.update(existingTabs[0].id, { active: true });
+    return;
+  }
+  await chrome.windows.create({
+    url,
+    type: 'popup',
+    width: 1420,
+    height: 900,
+    top: 40,
+    left: 60,
+  });
+}
+
+// ============================================================================
+// Central Message Router
+// ============================================================================
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Command Center API Handlers
+  if (message?.type === 'CMD_GET_ALL_DIALOGUES') {
+    getStoredDialogues()
+      .then((dialogues) => sendResponse({ ok: true, data: Object.values(dialogues) }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message?.type === 'CMD_OPEN_COMMAND_CENTER') {
+    openCommandCenterWindow()
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message?.type === 'CRM_SYNC_DIALOGUE') {
+    handleCrmDialogueSync(message.payload, sender?.tab?.id)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message?.type === 'CMD_SEND_MESSAGE') {
+    handleCommandCenterSendMessage(message.payload)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message?.type === 'CMD_TOGGLE_AUTOPILOT') {
+    handleToggleAutopilot(message.payload)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message?.type === 'CMD_GENERATE_AI_REPLY') {
+    handleCommandCenterGenerateReply(message.payload)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message?.type === 'CMD_ADD_DOSSIER_FACT') {
+    handleAddDossierFact(message.payload)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message?.type === 'CMD_ADD_TEST_DIALOGUE') {
+    handleAddTestDialogue()
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  // Legacy & In-Page HUD Handlers
   if (message?.type === 'ALPHADATE_AUTONOMOUS_CONDUCT') {
     handleAutonomousConduct(message, sender)
       .then(sendResponse)
@@ -57,42 +369,438 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === 'ALPHADATE_ANALYZE_PROFILE') {
-    handleProfileAnalysis(message)
-      .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
-    return true;
-  }
-
-  if (message?.type === 'ALPHADATE_INVITES') {
-    handleInvites(message)
-      .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
-    return true;
-  }
-
-  if (message?.type === 'ALPHADATE_CAPTURE_IMAGE') {
-    handleCaptureImage(message, sender)
-      .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
-    return true;
-  }
-
-  if (message?.type === 'ALPHADATE_ANALYZE_PHOTO') {
-    handlePhotoAnalysis(message, sender)
-      .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
-    return true;
-  }
-
   if (message?.type === 'ALPHADATE_PING') {
-    sendResponse({ ok: true, version: '2.0.0' });
+    sendResponse({ ok: true, version: '3.0.0' });
     return false;
   }
 });
 
 // ============================================================================
-// Model Scoring & Candidate List
+// Multi-Dialogue Synchronization Engine
+// ============================================================================
+
+async function handleCrmDialogueSync(payload: any, tabId?: number): Promise<any> {
+  if (!payload || !payload.dialogueId) {
+    return { ok: false, error: 'Отсутствует dialogueId' };
+  }
+
+  const dialogues = await getStoredDialogues();
+  const id = payload.dialogueId;
+
+  let existing = dialogues[id];
+  const incomingMessages: SyncedMessage[] = payload.messages || [];
+
+  if (!existing) {
+    // New dialogue discovered from CRM
+    existing = {
+      id,
+      tabId,
+      platform: 'alpha.date',
+      interlocutor: {
+        id,
+        name: payload.interlocutor?.name || 'Мужчина',
+        age: payload.interlocutor?.age || '—',
+        photo: payload.interlocutor?.photo || '',
+        location: payload.interlocutor?.location || '',
+        status: 'online',
+      },
+      operatorProfile: {
+        name: payload.operatorProfile?.name || 'Девушка',
+        id: payload.operatorProfile?.id || '',
+        location: payload.operatorProfile?.location || '',
+      },
+      messages: incomingMessages,
+      lastActivity: Date.now(),
+      unread: true,
+      autopilotEnabled: false,
+      autopilotLogs: [
+        {
+          id: `log_init_${Date.now()}`,
+          timestamp: Date.now(),
+          action: 'Синхронизация CRM',
+          details: 'Диалог обнаружен в активной вкладке CRM.',
+          status: 'info',
+        },
+      ],
+      dossier: {
+        archetype: 'Анализ диалога...',
+        strategy: 'Определение тактики...',
+        facts: [],
+        summary: 'Новый контакт из CRM',
+      },
+    };
+  } else {
+    // Merge messages without duplicates
+    if (tabId) existing.tabId = tabId;
+    if (payload.interlocutor?.name) existing.interlocutor.name = payload.interlocutor.name;
+    if (payload.interlocutor?.age) existing.interlocutor.age = payload.interlocutor.age;
+    if (payload.operatorProfile?.name) existing.operatorProfile.name = payload.operatorProfile.name;
+
+    const existingIds = new Set(existing.messages.map((m) => m.id));
+    let hasNewManMessage = false;
+
+    incomingMessages.forEach((msg) => {
+      if (!existingIds.has(msg.id)) {
+        existing.messages.push(msg);
+        existingIds.add(msg.id);
+        if (msg.sender === 'man') {
+          hasNewManMessage = true;
+          existing.unread = true;
+          existing.lastActivity = msg.timestamp || Date.now();
+        }
+      }
+    });
+
+    // If new incoming message from man, check Autopilot!
+    if (hasNewManMessage) {
+      existing.autopilotLogs.push({
+        id: `log_in_${Date.now()}`,
+        timestamp: Date.now(),
+        action: 'Входящее сообщение CRM',
+        details: `Получено новое сообщение от ${existing.interlocutor.name}`,
+        status: 'info',
+      });
+
+      // Trigger Autonomous Processing Queue
+      enqueueDialogueProcessing(existing.id, existing.autopilotEnabled);
+    }
+  }
+
+  dialogues[id] = existing;
+  await saveStoredDialogues(dialogues);
+  broadcastToCommandCenter('CMD_DIALOGUE_UPDATED', existing);
+
+  return { ok: true, dialogue: existing };
+}
+
+// ============================================================================
+// Autopilot & Independent Processing Queues
+// ============================================================================
+
+function enqueueDialogueProcessing(dialogueId: string, executeSendIfAutopilot: boolean) {
+  const currentTask = dialogueProcessingQueues.get(dialogueId) || Promise.resolve();
+
+  const nextTask = currentTask
+    .then(async () => {
+      const dialogues = await getStoredDialogues();
+      const dialogue = dialogues[dialogueId];
+      if (!dialogue) return;
+
+      dialogue.isProcessingAi = true;
+      broadcastToCommandCenter('CMD_DIALOGUE_UPDATED', dialogue);
+
+      try {
+        const apiKey = await getStoredApiKey();
+        if (!apiKey) {
+          dialogue.autopilotLogs.push({
+            id: `log_err_${Date.now()}`,
+            timestamp: Date.now(),
+            action: 'Ошибка автопилота',
+            details: 'Не указан Gemini API ключ в настройках',
+            status: 'warning',
+          });
+          dialogue.isProcessingAi = false;
+          dialogues[dialogueId] = dialogue;
+          await saveStoredDialogues(dialogues);
+          broadcastToCommandCenter('CMD_DIALOGUE_UPDATED', dialogue);
+          return;
+        }
+
+        // Run isolated AI synthesis for this dialogue
+        const clientCtx = {
+          name: dialogue.interlocutor.name,
+          dob: dialogue.interlocutor.age,
+          manId: dialogue.interlocutor.id,
+          girlInfo: `${dialogue.operatorProfile.name} (${dialogue.operatorProfile.location || ''})`,
+          chat: dialogue.messages.map((m) => `${m.sender === 'man' ? 'Мужчина' : 'Девушка'}: ${m.text}`).slice(-18).join('\n'),
+          lastManMessage: [...dialogue.messages].reverse().find((m) => m.sender === 'man')?.text || '',
+          kb: dialogue.dossier.facts.join('; '),
+        };
+
+        const res = await handleAutonomousConduct({
+          client: clientCtx,
+          environment: 'chat',
+          apiKey,
+        }, null);
+
+        const aiData = res.data;
+        dialogue.draftReply = {
+          textEn: aiData.main_text_en || '',
+          textRu: aiData.main_text_ru || '',
+          generatedAt: Date.now(),
+        };
+
+        if (aiData.archetype) dialogue.dossier.archetype = aiData.archetype;
+        if (aiData.strategy) dialogue.dossier.strategy = aiData.strategy;
+
+        dialogue.autopilotLogs.push({
+          id: `log_ai_${Date.now()}`,
+          timestamp: Date.now(),
+          action: 'AI-генерация ответа',
+          details: `Стратегия: ${aiData.strategy || 'Адаптивный ответ'}. Текст подготовлен.`,
+          status: 'success',
+        });
+
+        // AUTOPILOT SENDING EXECUTION
+        if (executeSendIfAutopilot && dialogue.autopilotEnabled && aiData.main_text_en) {
+          dialogue.autopilotLogs.push({
+            id: `log_send_start_${Date.now()}`,
+            timestamp: Date.now(),
+            action: 'АВТОПИЛОТ: Отправка в CRM',
+            details: `Отправка сообщения: "${aiData.main_text_en.slice(0, 50)}..."`,
+            status: 'info',
+          });
+
+          // Dispatch to CRM tab
+          let dispatched = false;
+          if (dialogue.tabId) {
+            try {
+              const tabRes = await chrome.tabs.sendMessage(dialogue.tabId, {
+                type: 'CRM_DISPATCH_MESSAGE',
+                text: aiData.main_text_en,
+                dialogueId: dialogue.id,
+              });
+              if (tabRes?.ok) dispatched = true;
+            } catch (e) {
+              console.warn('[Background] Tab message error:', e);
+            }
+          }
+
+          // Append to message history
+          const newMsg: SyncedMessage = {
+            id: `msg_ai_sent_${Date.now()}`,
+            sender: 'girl',
+            text: aiData.main_text_en,
+            timestamp: Date.now(),
+            deliveredToCrm: dispatched,
+          };
+          dialogue.messages.push(newMsg);
+          dialogue.lastActivity = Date.now();
+          dialogue.unread = false;
+
+          dialogue.autopilotLogs.push({
+            id: `log_send_done_${Date.now()}`,
+            timestamp: Date.now(),
+            action: 'АВТОПИЛОТ: Успешно доставлено',
+            details: dispatched ? 'Сообщение вставлено и отправлено в CRM' : 'Сообщение зафиксировано в истории',
+            status: 'success',
+          });
+        }
+      } catch (err: any) {
+        dialogue.autopilotLogs.push({
+          id: `log_ai_err_${Date.now()}`,
+          timestamp: Date.now(),
+          action: 'Ошибка генерации',
+          details: err.message,
+          status: 'warning',
+        });
+      } finally {
+        dialogue.isProcessingAi = false;
+        dialogues[dialogueId] = dialogue;
+        await saveStoredDialogues(dialogues);
+        broadcastToCommandCenter('CMD_DIALOGUE_UPDATED', dialogue);
+      }
+    })
+    .catch((err) => {
+      console.error(`[Background] Error processing dialogue ${dialogueId}:`, err);
+    });
+
+  dialogueProcessingQueues.set(dialogueId, nextTask);
+}
+
+// ============================================================================
+// Command Center Actions
+// ============================================================================
+
+async function handleCommandCenterSendMessage({ dialogueId, text }: any): Promise<any> {
+  const dialogues = await getStoredDialogues();
+  const dialogue = dialogues[dialogueId];
+  if (!dialogue) throw new Error('Диалог не найден');
+
+  // 1. Optimistic append to history
+  const newMsg: SyncedMessage = {
+    id: `msg_cmd_${Date.now()}`,
+    sender: 'girl',
+    text,
+    timestamp: Date.now(),
+    deliveredToCrm: false,
+  };
+  dialogue.messages.push(newMsg);
+  dialogue.lastActivity = Date.now();
+  dialogue.unread = false;
+
+  dialogue.autopilotLogs.push({
+    id: `log_op_send_${Date.now()}`,
+    timestamp: Date.now(),
+    action: 'РУЧНОЙ РЕЖИМ: Отправка из Command Center',
+    details: `Оператор отправил: "${text.slice(0, 45)}..."`,
+    status: 'info',
+  });
+
+  // 2. Dispatch to CRM tab
+  let sentToCrm = false;
+  if (dialogue.tabId) {
+    try {
+      const res = await chrome.tabs.sendMessage(dialogue.tabId, {
+        type: 'CRM_DISPATCH_MESSAGE',
+        text,
+        dialogueId,
+      });
+      if (res?.ok) sentToCrm = true;
+    } catch (_) {}
+  } else {
+    // Try to find any active alpha.date tab
+    const tabs = await chrome.tabs.query({ url: ['https://alpha.date/*', 'http://alpha.date/*'] });
+    if (tabs.length > 0 && tabs[0]?.id) {
+      try {
+        const res = await chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'CRM_DISPATCH_MESSAGE',
+          text,
+          dialogueId,
+        });
+        if (res?.ok) {
+          sentToCrm = true;
+          dialogue.tabId = tabs[0].id;
+        }
+      } catch (_) {}
+    }
+  }
+
+  newMsg.deliveredToCrm = sentToCrm;
+  dialogues[dialogueId] = dialogue;
+  await saveStoredDialogues(dialogues);
+  broadcastToCommandCenter('CMD_DIALOGUE_UPDATED', dialogue);
+
+  return { ok: true, message: newMsg, deliveredToCrm: sentToCrm };
+}
+
+async function handleToggleAutopilot({ dialogueId, enabled }: any): Promise<any> {
+  const dialogues = await getStoredDialogues();
+  const dialogue = dialogues[dialogueId];
+  if (!dialogue) throw new Error('Диалог не найден');
+
+  dialogue.autopilotEnabled = Boolean(enabled);
+  dialogue.autopilotLogs.push({
+    id: `log_ap_toggle_${Date.now()}`,
+    timestamp: Date.now(),
+    action: dialogue.autopilotEnabled ? 'Автопилот активирован' : 'Автопилот выключен',
+    details: dialogue.autopilotEnabled
+      ? 'AI будет автономно отвечать на входящие сообщения в CRM.'
+      : 'Переведено в ручной режим.',
+    status: dialogue.autopilotEnabled ? 'success' : 'info',
+  });
+
+  dialogues[dialogueId] = dialogue;
+  await saveStoredDialogues(dialogues);
+  broadcastToCommandCenter('CMD_DIALOGUE_UPDATED', dialogue);
+
+  // If enabled and has unread man message, immediately trigger!
+  if (dialogue.autopilotEnabled) {
+    const lastMsg = dialogue.messages[dialogue.messages.length - 1];
+    if (lastMsg && lastMsg.sender === 'man') {
+      enqueueDialogueProcessing(dialogueId, true);
+    }
+  }
+
+  return { ok: true, dialogue };
+}
+
+async function handleCommandCenterGenerateReply({ dialogueId, styleOverride }: any): Promise<any> {
+  enqueueDialogueProcessing(dialogueId, false);
+  return { ok: true, status: 'enqueued' };
+}
+
+async function handleAddDossierFact({ dialogueId, fact }: any): Promise<any> {
+  const dialogues = await getStoredDialogues();
+  const dialogue = dialogues[dialogueId];
+  if (!dialogue) throw new Error('Диалог не найден');
+
+  const clean = String(fact || '').trim();
+  if (clean && !dialogue.dossier.facts.includes(clean)) {
+    dialogue.dossier.facts.push(clean);
+    dialogue.autopilotLogs.push({
+      id: `log_fact_${Date.now()}`,
+      timestamp: Date.now(),
+      action: 'Память обновлена',
+      details: `Добавлен новый факт в досье: "${clean}"`,
+      status: 'info',
+    });
+    dialogues[dialogueId] = dialogue;
+    await saveStoredDialogues(dialogues);
+    broadcastToCommandCenter('CMD_DIALOGUE_UPDATED', dialogue);
+  }
+
+  return { ok: true, facts: dialogue.dossier.facts };
+}
+
+async function handleAddTestDialogue(): Promise<any> {
+  const dialogues = await getStoredDialogues();
+  const id = `test_sim_${Date.now()}`;
+  const names = ['Alexandre Dupont', 'James Wilson', 'Sven Lindqvist', 'Carlos Mendoza', 'Kenji Sato'];
+  const cities = ['Paris, France', 'London, UK', 'Stockholm, Sweden', 'Madrid, Spain', 'Tokyo, Japan'];
+  const idx = Object.keys(dialogues).length % names.length;
+
+  const newDialogue: SyncedDialogue = {
+    id,
+    platform: 'alpha.date',
+    interlocutor: {
+      id,
+      name: names[idx]!,
+      age: String(28 + (idx * 2)),
+      location: cities[idx]!,
+      status: 'online',
+    },
+    operatorProfile: {
+      name: 'Huang',
+      id: '1353686369',
+      location: 'Mexico City',
+    },
+    messages: [
+      {
+        id: `msg_init_${Date.now()}`,
+        sender: 'man',
+        text: `Hello! I just saw your profile and wanted to say hi from ${cities[idx]!}. How is your day going?`,
+        timestamp: Date.now(),
+        deliveredToCrm: true,
+      },
+    ],
+    lastActivity: Date.now(),
+    unread: true,
+    autopilotEnabled: false,
+    autopilotLogs: [
+      {
+        id: `log_sim_${Date.now()}`,
+        timestamp: Date.now(),
+        action: 'Тестовый диалог создан',
+        details: `Создан диалог для проверки независимой очереди и памяти`,
+        status: 'info',
+      },
+    ],
+    dossier: {
+      archetype: '🌟 Новый собеседник',
+      strategy: 'Первичная интрига и вовлечение',
+      facts: [`📍 ${cities[idx]!}`],
+      summary: 'Новый контакт для симуляции мульти-диалоговой нагрузки',
+    },
+  };
+
+  dialogues[id] = newDialogue;
+  await saveStoredDialogues(dialogues);
+  broadcastToCommandCenter('CMD_DIALOGUE_UPDATED', newDialogue);
+
+  return { ok: true, dialogue: newDialogue };
+}
+
+async function getStoredApiKey(): Promise<string> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([STORAGE_API_KEY], (res) => {
+      resolve((res[STORAGE_API_KEY] || '').trim());
+    });
+  });
+}
+
+// ============================================================================
+// AI Multi-Model Routing
 // ============================================================================
 
 async function listModels(apiKey: string): Promise<string[]> {
@@ -146,73 +854,8 @@ function isRetryableModelError(msg: string): boolean {
   return /model|not found|not available|unsupported|permission|quota|resource exhausted|429|404|overloaded/i.test(msg || '');
 }
 
-// ============================================================================
-// Multi-Modal & Screenshot Processing
-// ============================================================================
-
-async function captureTabImagePart(windowId: number, imageRect: any = null, viewport: any = null) {
-  const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: 90 });
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
-  const bitmap = await createImageBitmap(blob);
-
-  let sx = 0, sy = 0, sw = bitmap.width, sh = bitmap.height;
-  if (imageRect && viewport?.width && viewport?.height) {
-    const scaleX = bitmap.width / viewport.width;
-    const scaleY = bitmap.height / viewport.height;
-    const pad = 10;
-    sx = Math.max(0, Math.floor((imageRect.left - pad) * scaleX));
-    sy = Math.max(0, Math.floor((imageRect.top - pad) * scaleY));
-    sw = Math.min(bitmap.width - sx, Math.ceil((imageRect.width + pad * 2) * scaleX));
-    sh = Math.min(bitmap.height - sy, Math.ceil((imageRect.height + pad * 2) * scaleY));
-    if (sw < 80 || sh < 80) { sx = 0; sy = 0; sw = bitmap.width; sh = bitmap.height; }
-  }
-
-  const maxSide = 1200;
-  const ratio = Math.min(1, maxSide / Math.max(sw, sh));
-  const outW = Math.max(1, Math.round(sw * ratio));
-  const outH = Math.max(1, Math.round(sh * ratio));
-  const canvas = new OffscreenCanvas(outW, outH);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Could not get canvas context');
-  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, outW, outH);
-  bitmap.close();
-
-  const croppedBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.82 });
-  const buffer = await croppedBlob.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  const base64 = btoa(binary);
-  return { inlineData: { mimeType: 'image/jpeg', data: base64 } };
-}
-
-async function fetchImagePart(url: string) {
-  const response = await fetch(url, { credentials: 'include', cache: 'no-store' });
-  if (!response.ok) throw new Error(`Не удалось загрузить фото (${response.status})`);
-  const contentType = (response.headers.get('content-type') || 'image/jpeg').split(';')[0] || 'image/jpeg';
-  const buffer = await response.arrayBuffer();
-  if (buffer.byteLength > 8 * 1024 * 1024) throw new Error('Фото слишком большое для анализа.');
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  return { inlineData: { mimeType: contentType, data: btoa(binary) } };
-}
-
-async function handleCaptureImage({ imageRect, viewport }: any, sender: any) {
-  if (sender?.tab?.windowId == null) throw new Error('Не удалось получить активную вкладку.');
-  const imagePart = await captureTabImagePart(sender.tab.windowId, imageRect, viewport);
-  return { ok: true, imagePart };
-}
-
-// ============================================================================
-// Core Generation Handlers
-// ============================================================================
-
-async function handleGenerate({ apiKey, prompt, preferredModel, imageUrl, imagePart: customPart, images }: any, sender: any) {
-  if (!apiKey) throw new Error('Не найден Gemini API ключ. Укажите его в настройках (🔑 Доступы).');
+async function handleGenerate({ apiKey, prompt, preferredModel, images }: any, sender: any) {
+  if (!apiKey) throw new Error('Не найден Gemini API ключ. Укажите его в настройках.');
   if (!prompt) throw new Error('Промпт не сформирован.');
 
   const available = await listModels(apiKey);
@@ -220,8 +863,6 @@ async function handleGenerate({ apiKey, prompt, preferredModel, imageUrl, imageP
   if (!candidates.length) throw new Error('Нет доступных моделей Gemini для этого ключа.');
 
   const parts: any[] = [];
-
-  // 1. Attached photos (base64)
   if (images && Array.isArray(images) && images.length > 0) {
     for (const img of images) {
       if (img?.data && img?.mimeType) {
@@ -229,19 +870,6 @@ async function handleGenerate({ apiKey, prompt, preferredModel, imageUrl, imageP
       }
     }
   }
-
-  // 2. Custom image part or URL fetch
-  if (customPart?.inlineData) {
-    parts.push(customPart);
-  } else if (imageUrl) {
-    try {
-      const fetched = await fetchImagePart(imageUrl);
-      parts.push(fetched);
-    } catch (e) {
-      console.warn('[AlphaDate] Failed to fetch image from URL:', e);
-    }
-  }
-
   parts.push({ text: prompt });
 
   const failures: string[] = [];
@@ -276,112 +904,6 @@ async function handleGenerate({ apiKey, prompt, preferredModel, imageUrl, imageP
   throw new Error('Все модели Gemini отклонили запрос: ' + failures.slice(0, 3).join(' | '));
 }
 
-async function handleProfileAnalysis({ apiKey, prompt, preferredModel }: any) {
-  if (!apiKey) throw new Error('Gemini API key не указан.');
-  const available = await listModels(apiKey);
-  const candidates = buildCandidates(available, preferredModel);
-
-  for (const model of candidates) {
-    try {
-      const url = `${GEMINI_ROOT}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.25,
-            maxOutputTokens: 1200,
-          },
-        }),
-      });
-      const data = await safeJson(res);
-      if (!res.ok) throw new Error(extractError(data, res.status));
-      const text = (data.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('').trim();
-      return { ok: true, text, model };
-    } catch (err: any) {
-      if (!isRetryableModelError(err.message)) throw err;
-    }
-  }
-  throw new Error('Не удалось выполнить глубокий анализ анкеты.');
-}
-
-async function handlePhotoAnalysis({ apiKey, preferredModel, imageUrl, imageRect, viewport, imagePart: suppliedPart }: any, sender: any) {
-  if (!apiKey) throw new Error('API-ключ не указан.');
-  const available = await listModels(apiKey);
-  const candidates = buildCandidates(available, preferredModel);
-
-  let imagePart = suppliedPart?.inlineData ? suppliedPart : null;
-  if (!imagePart && imageUrl) {
-    try { imagePart = await fetchImagePart(imageUrl); } catch (_) {}
-  }
-  if (!imagePart && sender?.tab?.windowId != null) {
-    try { imagePart = await captureTabImagePart(sender.tab.windowId, imageRect, viewport); } catch (_) {}
-  }
-
-  if (!imagePart) return { ok: true, detail: 'NONE', description: '', confidence: 0 };
-
-  const prompt = `Проанализируй ТОЛЬКО фотографию мужчины из анкеты. Найди ОДНУ конкретную и безопасную деталь для первого контакта: предмет, питомец, транспорт, часы, одежда, хобби, локация или необычный фон.
-Верни ТОЛЬКО валидный JSON:
-{"detail":"короткая деталь или NONE","description":"одно предложение о том, что видно","confidence":90}`;
-
-  for (const model of candidates) {
-    try {
-      const url = `${GEMINI_ROOT}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [imagePart, { text: prompt }] }],
-          generationConfig: { temperature: 0.15, maxOutputTokens: 350 },
-        }),
-      });
-      const data = await safeJson(res);
-      if (!res.ok) throw new Error(extractError(data, res.status));
-      const text = (data.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('').trim();
-      const match = text.match(/\{[\s\S]*\}/);
-      const parsed = match ? JSON.parse(match[0]) : {};
-      return {
-        ok: true,
-        model,
-        detail: parsed.detail || 'NONE',
-        description: parsed.description || '',
-        confidence: Number(parsed.confidence || 0),
-      };
-    } catch (err: any) {
-      if (!isRetryableModelError(err.message)) throw err;
-    }
-  }
-  return { ok: true, detail: 'NONE', description: '', confidence: 0 };
-}
-
-async function handleInvites({ apiKey, prompt, preferredModel }: any) {
-  if (!apiKey) throw new Error('API-ключ не указан.');
-  const available = await listModels(apiKey);
-  const candidates = buildCandidates(available, preferredModel);
-
-  for (const model of candidates) {
-    try {
-      const url = `${GEMINI_ROOT}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 1.1, maxOutputTokens: 1600 },
-        }),
-      });
-      const data = await safeJson(res);
-      if (!res.ok) throw new Error(extractError(data, res.status));
-      const text = (data.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('').trim();
-      return { ok: true, text, model };
-    } catch (err: any) {
-      if (!isRetryableModelError(err.message)) throw err;
-    }
-  }
-  throw new Error('Не удалось сгенерировать инвайты.');
-}
-
 async function handleAutonomousConduct({ client, environment, overrideStyle, apiKey, images }: any, sender: any) {
   if (!apiKey) throw new Error('Не указан Gemini API ключ. Введите его в настройках суфлера.');
 
@@ -409,7 +931,7 @@ ${isDemandingContacts ? `ВНИМАНИЕ: МУЖЧИНА СПРАШИВАЕТ �
 СТРОЖАЙШИЙ ЗАПРЕТ: НИКАКИХ НОМЕРОВ ИЛИ СОЦСЕТЕЙ. НИ В КОЕМ СЛУЧАЕ НЕ ССЫЛАЙСЯ НА ПРАВИЛА САЙТА!
 Тактика: Изящный женский фрейм-контроль. Объясни, что ты предпочитаешь сначала почувствовать настоящую душевную близость здесь, в красивых письмах, прежде чем спешить в мессенджеры. Заинтригуй его!` : ''}
 
-${client.kb ? `ПРАВИЛА ОПЕРАТОРА (ОБЯЗАТЕЛЬНО УЧТИ):\n${client.kb}\n` : ''}
+${client.kb ? `ПРАВИЛА ОПЕРАТОРА / ИЗВЕСТНЫЕ ФАКТЫ О СОБЕСЕДНИКЕ:\n${client.kb}\n` : ''}
 ${client.selectedText ? `ВЫДЕЛЕННЫЙ ТЕКСТ / ЗАЦЕПКА ИЗ АНКЕТЫ:\n"${client.selectedText}"\n` : ''}
 ${overrideStyle ? `ДОПОЛНИТЕЛЬНЫЙ АКЦЕНТ СТИЛЯ:\n"${overrideStyle}"\n` : ''}
 
@@ -447,7 +969,7 @@ ${client.chat || 'Новая переписка! Напиши первое те�
 ЖЕСТКИЕ ПРАВИЛА:
 1. Строго женский род в русском переводе (-ла, -лась).
 2. СТРОЖАЙШИЙ ЗАПРЕТ НА КЛИШЕ: Запрещено писать "Hi handsome", "How are you doing?", "Nice profile", "What are you looking for here?".
-3. Оттолкнись от его последней реплики: подколи, подыграй или брось вызов.
+3. Оттолкнись от его последней реплики: подколи, подыграй или брось вызов. Не повторяй фразы из предыдущих сообщений!
 
 ${isDemandingContacts ? `⚠️ КРИТИЧЕСКИ ВАЖНО: МУЖЧИНА ТРЕБУЕТ НОМЕР ТЕЛЕФОНА / WHATSAPP / ВНЕ САЙТА (или пишет капслоком)!
 ПРАВИЛА ПРИ ТРЕБОВАНИИ КОНТАКТОВ:
@@ -459,7 +981,7 @@ ${isDemandingContacts ? `⚠️ КРИТИЧЕСКИ ВАЖНО: МУЖЧИНА 
    - Пример вайба: "Whoa, someone is in a rush! You think I give my private number just because a man types in all caps? 😉 You haven't even made me smile yet. Prove you're worth it first." или "Slow down, handsome. I don't jump into WhatsApp with strangers until I feel real sparks right here. Tell me what makes you think you've earned it?"
    - Заставь его продолжать писать в чате и тратить кредиты!` : ''}
 
-${client.kb ? `ПРАВИЛА ОПЕРАТОРА (ОБЯЗАТЕЛЬНО УЧТИ):\n${client.kb}\n` : ''}
+${client.kb ? `ПРАВИЛА ОПЕРАТОРА / ИЗВЕСТНЫЕ ФАКТЫ О МУЖЧИНЕ:\n${client.kb}\n` : ''}
 ${client.selectedText ? `ВЫДЕЛЕННАЯ ЗАЦЕПКА (НАИВЫСШИЙ ПРИОРИТЕТ):\n"${client.selectedText}"\n` : ''}
 ${overrideStyle ? `СТИЛЕВОЙ АКЦЕНТ:\n"${overrideStyle}"\n` : ''}
 
@@ -512,7 +1034,7 @@ async function safeJson(response: Response): Promise<any> {
 function extractError(data: any, status: number): string {
   const msg = data?.error?.message || data?.raw || `Ошибка Gemini API (${status})`;
   if (status === 400 && /API_KEY_INVALID|API key not valid|keyInvalid/i.test(msg)) {
-    return 'Неверный API ключ Gemini. Пожалуйста, проверьте правильность ключа и сохраните его на панели суфлера.';
+    return 'Неверный API ключ Gemini. Пожалуйста, проверьте правильность ключа в настройках Command Center.';
   }
   if (status === 429) {
     return 'Превышен лимит запросов Gemini (429 Rate Limit). Подождите несколько секунд и попробуйте снова.';

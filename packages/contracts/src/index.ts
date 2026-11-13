@@ -331,3 +331,61 @@ export interface HandshakeResponse {
   protocolVersion: typeof ALPHADATE_PROTOCOL_VERSION;
   activeProviders: ModelProviderId[];
 }
+
+// ============================================================================
+// 8. Command Center Real-Time Synchronized Dialogues
+// ============================================================================
+
+export interface SyncedMessage {
+  id: string;
+  sender: 'man' | 'girl';
+  text: string;
+  timestamp: number;
+  deliveredToCrm?: boolean;
+}
+
+export interface AutopilotLogEntry {
+  id: string;
+  timestamp: number;
+  action: string;
+  details?: string;
+  status: 'success' | 'warning' | 'info';
+}
+
+export interface DialogueDossier {
+  archetype: string;
+  strategy: string;
+  facts: string[];
+  summary: string;
+}
+
+export interface SyncedDialogue {
+  id: string; // unique dialogue ID (e.g. from URL /chat/8eubddc1-...)
+  tabId?: number;
+  platform: string;
+  interlocutor: {
+    id: string;
+    name: string;
+    age?: string;
+    photo?: string;
+    location?: string;
+    status: string;
+  };
+  operatorProfile: {
+    name: string;
+    id?: string;
+    location?: string;
+  };
+  messages: SyncedMessage[];
+  lastActivity: number;
+  unread: boolean;
+  autopilotEnabled: boolean;
+  autopilotLogs: AutopilotLogEntry[];
+  dossier: DialogueDossier;
+  draftReply?: {
+    textEn: string;
+    textRu: string;
+    generatedAt: number;
+  };
+  isProcessingAi?: boolean;
+}

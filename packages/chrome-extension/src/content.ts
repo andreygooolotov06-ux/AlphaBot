@@ -50,9 +50,76 @@
     }
   }, true);
 
-  chrome.runtime.onMessage.addListener((req) => {
+  chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     if (req?.type === 'ALPHADATE_TOGGLE_MENU') {
       togglePortal();
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    // Bidirectional Command Center execution: Injects and sends message in CRM
+    if (req?.type === 'CRM_DISPATCH_MESSAGE') {
+      const text = String(req.text || '').trim();
+      if (!text) {
+        sendResponse({ ok: false, error: 'Пустой текст сообщения' });
+        return false;
+      }
+
+      const chatInput = document.querySelector(
+        'textarea[data-testid="message"], textarea.clmn_3_chat_textarea-U9reqN, textarea[placeholder*="message"], textarea[name="message"], textarea'
+      ) as HTMLTextAreaElement | null;
+
+      if (!chatInput) {
+        sendResponse({ ok: false, error: 'Поле ввода чата не найдено на активной странице CRM' });
+        return false;
+      }
+
+      chatInput.focus();
+      setTextareaNativeValue(chatInput, text);
+
+      // Trigger Send Button in CRM
+      setTimeout(() => {
+        const sendBtn = document.querySelector(
+          '[data-testid="send-btn"], [data-testid="send-button"], button[type="submit"], [class*="send_btn"], [class*="chat_bottom"] button:not([data-testid*="sticker"]):not([data-testid*="image"]):not([data-testid*="video"]):not([data-testid*="audio"])'
+        ) as HTMLButtonElement | null;
+
+        if (sendBtn && !sendBtn.disabled) {
+          sendBtn.click();
+        } else {
+          // Fallback: simulate Enter key
+          const enterDown = new KeyboardEvent('keydown', {
+            bubbles: true,
+            cancelable: true,
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+          });
+          chatInput.dispatchEvent(enterDown);
+          const enterUp = new KeyboardEvent('keyup', {
+            bubbles: true,
+            cancelable: true,
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+          });
+          chatInput.dispatchEvent(enterUp);
+        }
+
+        // Trigger immediate resync back to Command Center
+        setTimeout(syncActiveDialogueToCommandCenter, 300);
+      }, 150);
+
+      showCosmicToast('📨 Сообщение из Command Center отправлено в CRM!');
+      sendResponse({ ok: true, deliveredText: text, timestamp: Date.now() });
+      return true;
+    }
+
+    if (req?.type === 'CRM_GET_SNAPSHOT') {
+      const client = scrapeClientContext();
+      sendResponse({ ok: true, client });
+      return true;
     }
   });
 
@@ -653,6 +720,7 @@
           </div>
 
           <div class="ad-hdr-btns">
+            <button type="button" class="ad-hdr-btn" id="ad-btn-open-cmd" title="Открыть COMMAND CENTER в отдельном окне" style="width:auto; padding:0 10px; font-size:11px; font-weight:700; color:#38bdf8; border:1px solid rgba(56,189,248,0.4); background:rgba(56,189,248,0.12);">🖥️ Центр</button>
             <button type="button" class="ad-hdr-btn" id="ad-btn-toggle-settings" title="Настройки API">⚙️</button>
             <button type="button" class="ad-hdr-btn" id="ad-btn-collapse" title="Свернуть в черную дыру">✕</button>
           </div>
@@ -1251,18 +1319,88 @@
   }
 
   // ==========================================================================
-  // 8. Autonomous Observer (Watches Dialogues & Incoming Messages)
+  // 8. Command Center Real-Time Synchronizer
+  // ==========================================================================
+
+  function syncActiveDialogueToCommandCenter(): void {
+    const client = scrapeClientContext();
+    if (!client || !client.manId || client.manId === 'unknown') return;
+
+    // Convert DOM messages into deduplicated SyncedMessage list
+    const rawMessages: any[] = [];
+    const contentNodes = Array.from(document.querySelectorAll('[data-testid="content"]'));
+
+    if (contentNodes.length > 0) {
+      const chatCol = document.querySelector('[class*="clmn_3"], [data-testid="message"]')?.closest('div[class*="clmn"]') || document.body;
+      const colRect = chatCol.getBoundingClientRect();
+
+      contentNodes.forEach((node, idx) => {
+        const text = ((node as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+        if (!text) return;
+
+        const parent = node.closest('[class*="message"], [class*="msg"], div') || node;
+        const pClass = (parent.className || '') + ' ' + (node.className || '');
+        const isExplicitIncoming = /incoming|received|left|theirs|partner/.test(pClass);
+        const isExplicitOutgoing = /outgoing|sent|right|mine|self|operator/.test(pClass);
+
+        let isMan = false;
+        if (isExplicitIncoming) isMan = true;
+        else if (isExplicitOutgoing) isMan = false;
+        else {
+          const nodeRect = node.getBoundingClientRect();
+          const nodeMid = nodeRect.left + nodeRect.width / 2;
+          const colMid = colRect.left + colRect.width / 2;
+          isMan = nodeMid < colMid;
+        }
+
+        const safeSnippet = text.slice(0, 16).replace(/[^\wа-яА-Я]/g, '');
+        rawMessages.push({
+          id: `crm_${client.manId}_${idx}_${safeSnippet}`,
+          sender: isMan ? 'man' : 'girl',
+          text,
+          timestamp: Date.now() - ((contentNodes.length - idx) * 30000),
+          deliveredToCrm: true,
+        });
+      });
+    }
+
+    chrome.runtime.sendMessage({
+      type: 'CRM_SYNC_DIALOGUE',
+      payload: {
+        dialogueId: client.manId,
+        interlocutor: {
+          id: client.manId,
+          name: client.name,
+          age: client.dob,
+          location: client.location,
+          status: 'online',
+        },
+        operatorProfile: {
+          name: client.girlInfo,
+        },
+        messages: rawMessages,
+        lastActivity: Date.now(),
+      },
+    }).catch(() => {});
+  }
+
+  // ==========================================================================
+  // 9. Autonomous Observer (Watches Dialogues & Incoming Messages)
   // ==========================================================================
 
   function startAutonomousObserver(): void {
     let lastUrl = window.location.href;
     let observerTimer: any = null;
 
-    const observer = new MutationObserver(() => {
-      if (!isAutoPilotEnabled) return;
+    // Initial sync
+    setTimeout(syncActiveDialogueToCommandCenter, 1000);
 
+    const observer = new MutationObserver(() => {
       clearTimeout(observerTimer);
       observerTimer = setTimeout(() => {
+        // Continuous sync of conversation to Command Center
+        syncActiveDialogueToCommandCenter();
+
         // 1. URL change check
         if (window.location.href !== lastUrl) {
           lastUrl = window.location.href;
@@ -1275,9 +1413,11 @@
         const client = scrapeClientContext();
         if (client && client.lastManMessage && client.lastManMessage !== lastHandledMessageId) {
           lastHandledMessageId = client.lastManMessage;
-          conductAutonomousFlow();
+          if (isAutoPilotEnabled) {
+            conductAutonomousFlow();
+          }
         }
-      }, 750);
+      }, 500);
     });
 
     observer.observe(document.body || document.documentElement, {
@@ -1302,6 +1442,14 @@
   }
 
   function setupActions(): void {
+    // Open Command Center
+    const cmdBtn = document.getElementById('ad-btn-open-cmd');
+    if (cmdBtn) {
+      cmdBtn.onclick = () => {
+        chrome.runtime.sendMessage({ type: 'CMD_OPEN_COMMAND_CENTER' });
+      };
+    }
+
     // Primary Insert Button
     document.getElementById('ad-btn-insert-main')!.onclick = insertActiveReplyIntoSite;
 
