@@ -1,32 +1,32 @@
 {
   "manifest_version": 3,
-  "name": "AlphaDate Personal AI",
-  "version": "1.0.0",
-  "description": "Персональный AI-ассистент оператора для браузера с поддержкой мульти-диалогов",
+  "name": "AlphaDate Personal AI — Элитный Суфлер",
+  "version": "2.0.0",
+  "description": "Плавающий интерактивный AI-суфлер для операторов с авто-ведением чата, глубоким анализом анкет, мультимодальностью и горячими клавишами F1-F12",
   "permissions": [
     "storage",
     "activeTab",
-    "scripting",
-    "sidePanel"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
-    "http://127.0.0.1:4789/*",
-    "ws://127.0.0.1:4790/*"
+    "<all_urls>"
   ],
-  "side_panel": {
-    "default_path": "sidepanel.html"
+  "action": {
+    "default_title": "AlphaDate AI (F8 / F12)"
   },
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-  "action": {
-    "default_title": "Открыть AlphaDate AI"
-  },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ]
