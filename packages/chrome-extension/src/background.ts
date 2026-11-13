@@ -5,10 +5,40 @@
 
 const GEMINI_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
 
-// Listen to extension icon click -> toggle overlay on page
-chrome.action.onClicked.addListener((tab) => {
-  if (tab.id) {
-    chrome.tabs.sendMessage(tab.id, { type: 'ALPHADATE_TOGGLE_MENU' }).catch(() => {});
+// Auto-inject content script into all existing HTTP/HTTPS tabs on install/update
+chrome.runtime.onInstalled.addListener(async () => {
+  try {
+    const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+    for (const tab of tabs) {
+      if (tab.id) {
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
+        }).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.warn('[AlphaDate] tab injection onInstalled error:', e);
+  }
+});
+
+// Listen to extension icon click -> toggle overlay on page (with fallback injection)
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id) return;
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: 'ALPHADATE_TOGGLE_MENU' });
+  } catch (err) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content.js']
+      });
+      setTimeout(() => {
+        chrome.tabs.sendMessage(tab.id!, { type: 'ALPHADATE_TOGGLE_MENU' }).catch(() => {});
+      }, 150);
+    } catch (e) {
+      console.warn('[AlphaDate] executeScript failed on action click:', e);
+    }
   }
 });
 

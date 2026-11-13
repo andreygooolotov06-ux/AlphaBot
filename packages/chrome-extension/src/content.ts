@@ -91,7 +91,7 @@
 
     const overlay = document.createElement('div');
     overlay.id = 'alphadate-hud-overlay';
-    overlay.style.cssText = 'position:fixed; top:0; left:0; width:0; height:0; z-index:2147483647;';
+    overlay.style.cssText = 'position:fixed; top:0; left:0; width:0; height:0; z-index:2147483647; pointer-events:none; overflow:visible;';
 
     overlay.innerHTML = `
       <style>
@@ -109,7 +109,7 @@
           color: #f1f5f9;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255,255,255,0.05) inset;
-          display: none;
+          display: flex;
           flex-direction: column;
           resize: both;
           overflow: hidden;
@@ -517,7 +517,7 @@
       </div>
     `;
 
-    document.documentElement.appendChild(overlay);
+    (document.body || document.documentElement).appendChild(overlay);
 
     // Event Bindings
     setupDragAndDrop();
@@ -569,10 +569,11 @@
 
   function toggleHUD(): void {
     ensureHUD();
-    const card = document.getElementById('alphadate-hud-card')!;
-    const isOpen = card.style.display === 'flex';
-    card.style.display = isOpen ? 'none' : 'flex';
-    if (!isOpen) {
+    const card = document.getElementById('alphadate-hud-card');
+    if (!card) return;
+    const isVisible = window.getComputedStyle(card).display !== 'none';
+    card.style.display = isVisible ? 'none' : 'flex';
+    if (!isVisible) {
       scrapeClientInfo();
     }
   }
@@ -1180,8 +1181,10 @@ Return ONLY valid JSON:
   }
 
   // Initialize
+  console.log('[AlphaDate Personal AI] Content script active on page!');
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', ensureHUD);
+    window.addEventListener('load', ensureHUD);
   } else {
     ensureHUD();
   }
