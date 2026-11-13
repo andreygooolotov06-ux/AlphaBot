@@ -20,5 +20,10 @@
     "typescript"
   ],
   "author": "AlphaDate Team",
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/chrome": "^0.3.7",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
 }

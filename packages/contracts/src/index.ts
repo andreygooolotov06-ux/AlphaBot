@@ -15,14 +15,24 @@ export const ALPHADATE_PROTOCOL_VERSION = '1.0.0';
 // ============================================================================
 
 export type MessageType =
+  // Lifecycle & Health
   | 'HANDSHAKE'
+  | 'HANDSHAKE_ACK'
   | 'HEARTBEAT'
+  | 'HEARTBEAT_ACK'
+  | 'GET_SYSTEM_STATUS'
+  | 'UPDATE_CONFIG'
+  // AI Operations
   | 'ANALYZE_CONTEXT'
   | 'GENERATE_SUGGESTIONS'
+  | 'STREAM_SUGGESTION_CHUNK'
+  | 'STREAM_SUGGESTION_END'
+  // Memory & Profile Operations
   | 'SEARCH_MEMORY'
   | 'SAVE_MEMORY'
-  | 'GET_MODEL_STATUS'
-  | 'UPDATE_CONFIG';
+  | 'DELETE_MEMORY'
+  | 'GET_PROFILE'
+  | 'UPDATE_PROFILE';
 
 export interface IPCRequest<T = unknown> {
   id: string;
@@ -48,14 +58,30 @@ export interface AppError {
 }
 
 export enum ErrorCode {
-  INVALID_PAYLOAD = 'ERR_INVALID_PAYLOAD',
-  UNAUTHORIZED = 'ERR_UNAUTHORIZED',
-  LOCAL_DAEMON_OFFLINE = 'ERR_LOCAL_DAEMON_OFFLINE',
-  ROUTER_NO_AVAILABLE_MODEL = 'ERR_ROUTER_NO_AVAILABLE_MODEL',
-  PROVIDER_API_FAILURE = 'ERR_PROVIDER_API_FAILURE',
-  STORAGE_ERROR = 'ERR_STORAGE_ERROR',
-  MEMORY_LOOKUP_TIMEOUT = 'ERR_MEMORY_LOOKUP_TIMEOUT',
-  UNKNOWN = 'ERR_UNKNOWN',
+  // Network & Transport
+  ERR_LOCAL_DAEMON_OFFLINE = 'ERR_LOCAL_DAEMON_OFFLINE',
+  ERR_UNAUTHORIZED = 'ERR_UNAUTHORIZED',
+  ERR_INVALID_PROTOCOL_VERSION = 'ERR_INVALID_PROTOCOL_VERSION',
+  ERR_TIMEOUT = 'ERR_TIMEOUT',
+
+  // Validation
+  ERR_INVALID_PAYLOAD = 'ERR_INVALID_PAYLOAD',
+  ERR_MISSING_REQUIRED_FIELD = 'ERR_MISSING_REQUIRED_FIELD',
+
+  // AI & Providers
+  ERR_ROUTER_NO_AVAILABLE_MODEL = 'ERR_ROUTER_NO_AVAILABLE_MODEL',
+  ERR_PROVIDER_API_FAILURE = 'ERR_PROVIDER_API_FAILURE',
+  ERR_PROVIDER_RATE_LIMIT = 'ERR_PROVIDER_RATE_LIMIT',
+  ERR_PROVIDER_INVALID_KEY = 'ERR_PROVIDER_INVALID_KEY',
+
+  // Storage & Memory
+  ERR_STORAGE_READ_ERROR = 'ERR_STORAGE_READ_ERROR',
+  ERR_STORAGE_WRITE_ERROR = 'ERR_STORAGE_WRITE_ERROR',
+  ERR_PROFILE_NOT_FOUND = 'ERR_PROFILE_NOT_FOUND',
+  ERR_MEMORY_LOOKUP_TIMEOUT = 'ERR_MEMORY_LOOKUP_TIMEOUT',
+
+  // General
+  ERR_INTERNAL = 'ERR_INTERNAL',
 }
 
 // ============================================================================
@@ -70,7 +96,7 @@ export interface DialogMessage {
   text: string;
   timestamp: number;
   metadata?: {
-    sentiment?: 'positive' | 'neutral' | 'negative' | 'flirty' | 'angry';
+    sentiment?: 'positive' | 'neutral' | 'negative' | 'flirty' | 'angry' | 'curious';
     translatedText?: string;
     detectedLanguage?: string;
     rawElementId?: string;
@@ -86,7 +112,7 @@ export interface InterlocutorProfile {
   bio?: string;
   interests?: string[];
   notes?: string;
-  sentimentTrend?: string;
+  lastActiveTimestamp?: number;
 }
 
 export interface OperatorContextPayload {
@@ -101,13 +127,20 @@ export interface OperatorContextPayload {
 // 3. AI Core & Suggestion Contracts
 // ============================================================================
 
-export type SuggestionTone = 'casual' | 'witty' | 'empathetic' | 'flirty' | 'formal' | 'inquisitive';
+export type SuggestionTone =
+  | 'casual'
+  | 'witty'
+  | 'empathetic'
+  | 'flirty'
+  | 'formal'
+  | 'inquisitive';
 
 export interface SuggestionRequestPayload {
   context: OperatorContextPayload;
   desiredTone?: SuggestionTone;
   customInstruction?: string;
   variantCount?: number;
+  streamResponse?: boolean;
 }
 
 export interface SuggestionItem {
@@ -118,12 +151,29 @@ export interface SuggestionItem {
   reasoningBrief?: string;
 }
 
+export interface SuggestionAnalysis {
+  sentiment: string;
+  detectedIntent: string;
+  recommendedAction: string;
+}
+
 export interface SuggestionResponsePayload {
   suggestions: SuggestionItem[];
+  analysis?: SuggestionAnalysis;
   modelUsed: string;
   provider: ModelProviderId;
   latencyMs: number;
   cached: boolean;
+}
+
+export interface StreamChunkPayload {
+  variantIndex: number;
+  delta: string;
+}
+
+export interface StreamEndPayload {
+  finalSuggestions: SuggestionItem[];
+  latencyMs: number;
 }
 
 // ============================================================================
@@ -139,6 +189,7 @@ export interface ModelProviderStatus {
   currentLatencyMs?: number;
   rpmLimitRemaining?: number;
   activeModelName: string;
+  lastError?: string;
 }
 
 export interface ModelRouteOptions {
@@ -164,10 +215,17 @@ export interface IModelProvider {
 // 5. Memory Manager Contracts
 // ============================================================================
 
+export type MemoryCategory =
+  | 'preference'
+  | 'personal_fact'
+  | 'boundary'
+  | 'topic_interest'
+  | 'timeline_event';
+
 export interface MemoryRecord {
   id: string;
   profileId: string;
-  category: 'preference' | 'personal_fact' | 'boundary' | 'topic_interest' | 'timeline_event';
+  category: MemoryCategory;
   key: string;
   value: string;
   confidenceScore: number;
@@ -178,7 +236,7 @@ export interface MemoryRecord {
 export interface MemoryQuery {
   profileId: string;
   queryText?: string;
-  categories?: MemoryRecord['category'][];
+  categories?: MemoryCategory[];
   limit?: number;
 }
 
@@ -186,4 +244,90 @@ export interface IMemoryManager {
   search(query: MemoryQuery): Promise<MemoryRecord[]>;
   store(record: Omit<MemoryRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryRecord>;
   summarizeContext(profileId: string): Promise<string>;
+  deleteRecord(id: string): Promise<boolean>;
+}
+
+// ============================================================================
+// 6. SQLite Database Entities (Host Daemon Tier)
+// ============================================================================
+
+export interface ProfileEntity {
+  id: string;
+  platform: string;
+  display_name: string;
+  age: number | null;
+  location: string | null;
+  bio: string | null;
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface DialogSessionEntity {
+  id: string;
+  profile_id: string;
+  platform: string;
+  status: 'active' | 'archived';
+  started_at: number;
+  ended_at: number | null;
+  message_count: number;
+}
+
+export interface MessageEntity {
+  id: string;
+  session_id: string;
+  profile_id: string;
+  sender_role: ParticipantRole;
+  content: string;
+  sentiment: string | null;
+  timestamp: number;
+}
+
+export interface MemoryFactEntity {
+  id: string;
+  profile_id: string;
+  category: MemoryCategory;
+  fact_key: string;
+  fact_value: string;
+  confidence: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface OperatorTemplateEntity {
+  id: string;
+  category: string;
+  title: string;
+  content_template: string;
+  tags: string | null;
+  usage_count: number;
+  created_at: number;
+}
+
+export interface AuditLogEntity {
+  id: string;
+  action_type: string;
+  profile_id: string | null;
+  model_used: string | null;
+  latency_ms: number;
+  success: number;
+  error_message: string | null;
+  timestamp: number;
+}
+
+// ============================================================================
+// 7. Handshake & Config DTOs
+// ============================================================================
+
+export interface HandshakeRequest {
+  clientVersion: string;
+  protocolVersion: typeof ALPHADATE_PROTOCOL_VERSION;
+  extensionId: string;
+}
+
+export interface HandshakeResponse {
+  success: boolean;
+  serverVersion: string;
+  protocolVersion: typeof ALPHADATE_PROTOCOL_VERSION;
+  activeProviders: ModelProviderId[];
 }

@@ -5,7 +5,7 @@ import {
 } from '@alphadate/contracts';
 
 export class MemoryManager implements IMemoryManager {
-  // In-memory / storage adapter placeholder (SQLite backing implemented in Local App)
+  // In-memory / storage adapter placeholder (SQLite backing implemented by Agent 2)
   private memoryCache: Map<string, MemoryRecord[]> = new Map();
 
   public async search(query: MemoryQuery): Promise<MemoryRecord[]> {
@@ -40,5 +40,17 @@ export class MemoryManager implements IMemoryManager {
     const records = await this.search({ profileId });
     if (records.length === 0) return 'No prior profile memory recorded.';
     return records.map((r) => `[${r.category}] ${r.key}: ${r.value}`).join('\n');
+  }
+
+  public async deleteRecord(id: string): Promise<boolean> {
+    for (const [profileId, records] of this.memoryCache.entries()) {
+      const idx = records.findIndex((r) => r.id === id);
+      if (idx !== -1) {
+        records.splice(idx, 1);
+        this.memoryCache.set(profileId, records);
+        return true;
+      }
+    }
+    return false;
   }
 }

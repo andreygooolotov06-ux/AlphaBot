@@ -5,7 +5,8 @@
     "outDir": "./dist",
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
-    "lib": ["DOM", "DOM.Iterable", "ES2022"]
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "types": ["chrome"]
   },
   "include": ["src/**/*"]
 }

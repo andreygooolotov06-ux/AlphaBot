@@ -1,116 +1,174 @@
-# Architecture Specification: AlphaDate Personal AI
+# Архитектурная спецификация: AlphaDate Personal AI
 
-**Version:** 1.0.0-draft  
-**Platform Target (Stage 1):** Windows 10/11 Desktop + Google Chrome (Manifest V3)
+**Роль документа:** Фундаментальная техническая архитектура системы.  
+**Главный архитектор:** Lead Architect & Frontend Developer (Агент 1, ThinkPad).  
+**Целевая платформа (Этап 1):** Windows 10/11 Desktop + Google Chrome (Manifest V3).  
+**Статус:** Утверждено для реализации.
 
 ---
 
-## 1. High-Level System Overview
+## 1. Обзор системы и топология
 
+AlphaDate Personal AI представляет собой гибридную двухуровневую систему, работающую локально на рабочей станции оператора без использования внешних Linux-серверов или облачной серверной инфраструктуры.
+
+```mermaid
+graph TD
+    subgraph Browser ["Google Chrome (Песочница браузера)"]
+        subgraph DOM ["Страница платформы"]
+            CS["Content Script<br/>(Адаптер платформы, MutationObserver)"]
+            ShadowHUD["Shadow DOM UI<br/>(Встроенные подсказки)"]
+        end
+
+        subgraph ExtCore ["Расширение (Manifest V3)"]
+            SP["Preact Side Panel<br/>(Мульти-диалоговый пульт оператора)"]
+            SW["Background Service Worker<br/>(Маршрутизатор событий, Lifecycle Manager)"]
+            IDB["IndexedDB<br/>(Локальный кэш сессий и вкладок)"]
+        end
+    end
+
+    subgraph Host ["Локальная машина (Windows Desktop)"]
+        subgraph LocalDaemon ["Local App Daemon (Node.js + TypeScript)"]
+            Gateway["IPC Gateway<br/>(HTTP: 4789, WS: 4790)"]
+            AICore["AI Core<br/>(Пайплайн контекста и промптов)"]
+            Router["Model Router<br/>(Gemini, OpenAI, Claude, Local LLM)"]
+            MemMgr["Memory Manager<br/>(Краткосрочный буфер + Долговременные факты)"]
+            DB[(SQLite Database<br/>better-sqlite3 / WAL)]
+        end
+        
+        Vault[".env Vault<br/>(Изолированные API-ключи)"]
+    end
+
+    CS <-->|"chrome.runtime (Message Passing)"| SW
+    SP <-->|"chrome.runtime (Message Passing)"| SW
+    SW <-->|"IDB Transactions"| IDB
+    SW <-->|"Dual IPC: HTTP REST + WebSocket"| Gateway
+    Gateway --> AICore
+    AICore --> Router
+    AICore --> MemMgr
+    MemMgr <--> DB
+    Router <-->|"Внешние API по HTTPS"| RemoteAI["AI Providers (Cloud / Local)"]
+    Vault -.->|"Чтение конфига при старте"| LocalDaemon
 ```
-+---------------------------------------------------------------------------------+
-|                                 GOOGLE CHROME                                   |
-|                                                                                 |
-|  +---------------------------+                +------------------------------+  |
-|  |     Content Script        |                |     Preact Sidepanel /       |  |
-|  |  - DOM Dialogue Observer  | <--- IPC ----> |     Popup Operator UI        |  |
-|  |  - Context Extraction     |                |  - Suggestion List & Tones   |  |
-|  +---------------------------+                +------------------------------+  |
-|               |                                              |                  |
-|               +----------------------+-----------------------+                  |
-|                                      |                                          |
-|                         [Background Service Worker]                             |
-|                                      |                                          |
-|                                 (IndexedDB)                                     |
-+--------------------------------------|------------------------------------------+
-                                       |
-                   WebSocket / HTTP (127.0.0.1:4789-4790)
-                   Authenticated via Local Token
-                                       |
-+--------------------------------------v------------------------------------------+
-|                       LOCAL APPLICATION DAEMON (Node.js)                         |
-|                                                                                 |
-|  +--------------------+   +---------------------+   +------------------------+  |
-|  |    IPC Gateway     |   |     AI Core         |   |      Model Router      |  |
-|  | - Protocol v1.0.0  |-->| - Prompt Pipeline   |-->| - Gemini 1.5/2.0 Flash |  |
-|  | - Request Validator|   | - Context Enrichment|   | - OpenAI GPT-4o-mini   |  |
-|  +--------------------+   +---------------------+   | - Anthropic Claude     |  |
-|                                      |              | - Local (Ollama)       |  |
-|                                      v              +------------------------+  |
-|                           +---------------------+                               |
-|                           |   Memory Manager    |                               |
-|                           | - Short-term Buffer |                               |
-|                           | - Long-term Facts   |                               |
-|                           +---------------------+                               |
-|                                      |                                          |
-|                                      v                                          |
-|                           +---------------------+                               |
-|                           |  SQLite Database    |                               |
-|                           | (better-sqlite3)    |                               |
-|                           +---------------------+                               |
-+---------------------------------------------------------------------------------+
-```
 
 ---
 
-## 2. Component Breakdown
+## 2. Обоснование технического стека
 
-### 2.1 Chrome Extension (`packages/chrome-extension`)
-* **Technology:** Manifest V3, TypeScript, Preact (lightweight reactive UI).
-* **Role:**
-  * Runs inside the operator's browser session.
-  * Injects content scripts to analyze active dialogue text, interlocutor nickname, and message history without blocking page interactions.
-  * Renders a non-intrusive floating HUD / Sidepanel for the operator with hotkeys (`Ctrl+Shift+Space`) to insert suggested replies.
-  * Stores session-local cache in **IndexedDB** for instant UI rendering.
+### 2.1 Chrome Extension: Manifest V3
+* **Почему Manifest V3:** Единственный актуальный стандарт Google Chrome Web Store. Поддержка Manifest V2 полностью прекращена.
+* **Главный вызов:** Фоновые страницы (Background Pages) заменены на **Service Worker**, который принудительно выгружается из памяти браузером после **30 секунд неактивности**.
+* **Архитектурное решение проблемы Service Worker:**
+  1. **Dual Transport (Двойной транспорт связи с Local Daemon):**
+     * **HTTP REST (порт 4789)** для атомарных запросов без сохранения состояния (рукопожатие, разовый анализ сообщения, ручной вызов подсказки). Если воркер «спал», он мгновенно просыпается по событию от интерфейса, шлет быстрый HTTP-запрос и получает ответ.
+     * **WebSocket (порт 4790)** для потоковой генерации (streaming) и пуш-уведомлений. Управляется из устойчивого контекста **Side Panel** или восстанавливается сервис-воркером с автоматическим переподключением (Exponential Backoff).
+  2. **Персистентность состояния в IndexedDB:** Никаких критических данных в оперативной памяти Service Worker. Любое изменение контекста фиксируется в `IndexedDB`. При перезапуске воркера состояние восстанавливается за < 5 миллисекунд.
 
-### 2.2 Shared Contracts (`packages/contracts`)
-* **Technology:** TypeScript.
-* **Role:**
-  * Strict boundary definition for all requests, responses, models, and errors.
-  * Zero circular dependencies. Both frontend and backend compile against these contracts.
+### 2.2 UI: Preact + Preact Signals (против тяжелого React)
+* **Сравнение:**
+  * React 18/19: вес бандла ~140KB+ в сжатом виде, ресурсоемкий Virtual DOM reconciler, накладные расходы по памяти при открытии десятка вкладок.
+  * Preact: вес ядра **всего 3.5–4 KB**, 100% совместимость с хуками через `preact/compat`, мгновенный маунт интерфейса (< 30 мс).
+* **Preact Signals:** Реактивность на уровне точечных обновлений DOM без лишних ре-рендеров всего дерева компонентов. При быстром потоке входящих сообщений от нескольких собеседников интерфейс оператора не фризит и потребляет минимум CPU.
+* **Вердикт:** **Preact + Signals** утверждается как бескомпромиссный стандарт производительности.
 
-### 2.3 Local Application Daemon (`packages/local-app`)
-* **Technology:** Node.js, TypeScript.
-* **Role:**
-  * Runs as a background Windows process on `127.0.0.1`.
-  * Manages the SQLite database connection for persistent storage.
-  * Acts as the secure broker between the Chrome Extension and external AI APIs, keeping API keys outside the browser extension sandbox.
+### 2.3 Сборщик: Vite
+* Мгновенный HMR (Hot Module Replacement) в режиме разработки.
+* Многоточечная (multi-entry) сборка Rollup:
+  - `src/background/index.ts` -> `dist/background.js` (Service Worker)
+  - `src/content/index.ts` -> `dist/content.js` (Content Script)
+  - `src/sidepanel/index.html` -> `dist/sidepanel.html` (Панель оператора)
+  - `src/popup/index.html` -> `dist/popup.html` (Быстрое меню)
+* Чистый tree-shaking, исключающий неиспользуемый код из финального расширения.
 
-### 2.4 AI Core (`packages/ai-core`)
-* **Role:**
-  * Independent query processing pipeline.
-  * Combines dialogue context, operator instructions, and retrieved memory facts into a structured, optimized prompt.
-  * Parses raw LLM completions into structured `SuggestionItem[]` arrays with tone labels and confidence ratings.
+### 2.4 Local Application: Node.js (v20+) + TypeScript
+* **Почему Node.js:** Высокая скорость разработки, нативная поддержка ESM, богатая экосистема официальных AI SDK (Google GenAI, OpenAI, Anthropic), низкие накладные расходы при работе с сетью и сокетами.
+* **SQLite через `better-sqlite3`:**
+  - В отличие от асинхронного `sqlite3`, библиотека `better-sqlite3` использует прямое синхронное C++ связывание с V8. Это гарантирует **микросекундный доступ** к данным без блокировки событийного цикла и накладных расходов на промисы.
+  - Включение режима **WAL (Write-Ahead Logging)**: чтение и запись происходят параллельно без взаимных блокировок.
 
-### 2.5 Model Router (`packages/model-router`)
-* **Role:**
-  * Abstraction over AI providers: Google Gemini, OpenAI, Anthropic, OpenRouter, and local Ollama.
-  * Handles failover (if Gemini rate limits or fails, seamlessly fall back to OpenAI or local model).
-  * Rate-limiting and latency monitoring.
-
-### 2.6 Memory Manager (`packages/memory-manager`)
-* **Role:**
-  * **Short-Term Context:** Current chat window buffer (last N turns).
-  * **Long-Term Memory:** Facts about the interlocutor (hobbies, preferences, emotional triggers, conversation boundaries) persisted in SQLite.
-  * Enables context-aware dialogue progression across days and weeks.
+### 2.5 Разделение хранилищ: Two-Tier Storage
+* **Tier 1 (Browser IndexedDB):** Временный оперативный кэш. Хранит ID открытых вкладок браузера, черновики оператора, активные фильтры UI. Не требует синхронизации при закрытии браузера.
+* **Tier 2 (Host SQLite):** Полноценное хранилище. Долговременная память собеседников (факты, предпочтения, история тем), шаблоны оператора, лог работы для аналитики.
 
 ---
 
-## 3. Storage Division & Isolation
+## 3. Архитектура Chrome Extension
 
-| Layer | Technology | Stored Data | Security Boundary |
-|---|---|---|---|
-| **Browser (Client)** | `IndexedDB` | Active tab state, UI preferences, temporary DOM cache | Browser Extension sandbox |
-| **Local App (Host)** | `SQLite` | Full interlocutor profiles, dialogue archives, memory facts, operator notes | Local Windows user directory |
-| **Secrets / Keys** | `.env` | Provider API keys, local daemon authentication secret | Machine-local only (never in Git) |
+### 3.1 Content Script и DOM-наблюдение
+* **Запрет на `setInterval` и полный опрос DOM:** Постоянный опрос дерева DOM через таймеры перегружает вкладки браузера и приводит к утечкам памяти.
+* **Стратегия эффективного наблюдения:**
+  1. **IntersectionObserver / Ленивая инициализация:** Скрипт не выполняет поиск элементов, пока страница не перейдет в видимое состояние.
+  2. **Targeted MutationObserver:** Наблюдение вешается **только** на контейнер ленты сообщений (Message Container).
+  3. **Debounce (150–200 мс):** Пакетная обработка входящих узлов DOM. Если собеседник пишет длинное сообщение частями, скрипт ждет стабилизации текста.
+  4. **Adapter Pattern:** Логика поиска селекторов вынесена в изолированные адаптеры платформ (`PlatformAdapter`). При изменении верстки сайта обновляется только один файл адаптера, не затрагивая ядро расширения.
+
+### 3.2 Side Panel (Основной рабочий интерфейс оператора)
+* Использует стандартный Chrome Side Panel API (`chrome.sidePanel.setOptions`).
+* Панель закреплена сбоку экрана и **не закрывается** при клике по страницам (в отличие от Popup).
+* Оператор видит активный диалог текущей вкладки и может мгновенно переключаться между другими диалогами без потери набранного текста.
+
+### 3.3 Shadow DOM для встроенных подсказок (In-Page HUD)
+* При необходимости вывода подсказок прямо в поле ввода на веб-странице используется **Closed Shadow DOM** (`element.attachShadow({ mode: 'closed' })`).
+* Это полностью изолирует стили расширения от стилей сайта и гарантирует, что скрипты страницы не увидят и не перехватят интерфейс ассистента.
 
 ---
 
-## 4. Phase 1 Roadmap (Local System Focus)
+## 4. Персональный интерфейс оператора (Preact UI)
 
-1. **Step 1 (Current):** Repo scaffold, strict contracts, branch strategy, and architecture sign-off.
-2. **Step 2:** Implementation of `@alphadate/contracts` validation and unit tests.
-3. **Step 3:** Model Router with Gemini & OpenAI adapters.
-4. **Step 4:** SQLite schema creation in `@alphadate/local-app` and Memory Manager integration.
-5. **Step 5:** Chrome Extension Manifest V3 background service worker and Preact Sidepanel.
-6. **Step 6:** End-to-end integration and latency benchmarking on Windows.
+### 4.1 Мульти-диалоговая модель (Multi-Dialogue)
+Оператор одновременно ведет от 3 до 10 диалогов на разных вкладках.
+* **Модель контекста (`ActiveDialogueContext`):**
+  - При переключении вкладок расширение считывает `tabId` и привязанный `interlocutorId`.
+  - Side Panel мгновенно подтягивает:
+    1. Карточку собеседника (имя, возраст, статус, ключевые факты из памяти).
+    2. Краткую сводку предыдущего общения (Summary).
+    3. Анализ последнего входящего сообщения (тональность, скрытый вопрос, триггеры).
+    4. 3 варианта ответа с разными тональностями (Остроумный, Заботливый, Флиртующий, Нейтральный).
+* **Human-in-the-Loop (Оператор в центре):**
+  - Подсказка **никогда не отправляется автоматически**.
+  - Оператор может кликнуть на вариант (или нажать горячую клавишу `Alt+1`, `Alt+2`), чтобы текст скопировался в поле ввода страницы для ручной проверки и редактирования.
+
+---
+
+## 5. Архитектура Local Daemon, AI Core и Model Router
+
+### 5.1 Local Application Daemon
+* Локальный сервис Node.js, запускающийся в трее или консоли Windows.
+* Обладает собственным HTTP-сервером (порт 4789) и WebSocket-сервером (порт 4790).
+* Аутентификация локальных запросов: при первом старте генерируется случайный `LOCAL_APP_SECRET_TOKEN`, который сохраняется в локальной конфигурации и используется расширением для защиты от сторонних сайтов (`Host: 127.0.0.1`, заголовок `X-AlphaDate-Token`).
+
+### 5.2 Model Router (Маршрутизатор с каскадом отказоустойчивости)
+* Поддерживает унифицированный интерфейс провайдеров (`IModelProvider`).
+* **Каскад приоритетов (Fallback Cascade):**
+  ```
+  1. Google Gemini 1.5/2.0 Flash (Основной: высокая скорость, низкая стоимость, отличное качество диалога)
+     |--> В случае сетевой ошибки, 429 Rate Limit или отсутствия ключа:
+  2. OpenAI GPT-4o-mini (Второй резерв)
+     |--> В случае сбоя внешнего интернета:
+  3. Local LLM / Ollama (Локальная модель на ПК оператора — полная автономность)
+  ```
+
+### 5.3 Memory Manager (Двухуровневая память)
+1. **Short-Term Memory (Скользящее окно):** Последние 10 сообщений активного диалога передаются в контекст промпта как сырой чат.
+2. **Long-Term Memory (Ассоциативные факты):**
+   - Факты хранятся в SQLite в нормализованном виде: `{ profileId, category, key, value, confidence }`.
+   - При генерации подсказки из базы извлекаются факты именно об этом человеке (любимый кофе, имя собаки, работа, город, табу-темы) и инжектируются в System Prompt в виде лаконичного списка.
+
+---
+
+## 6. Бюджеты производительности и ограничения
+
+| Параметр | Лимит для Chrome Extension | Лимит для Local Daemon |
+|---|---|---|
+| **RAM (Оперативная память)** | < 35 MB в покое, < 60 MB под нагрузкой | < 65 MB в покое, < 120 MB под нагрузкой |
+| **CPU (Простой)** | 0.0% (полная тишина при отсутствии ввода) | 0.0% |
+| **CPU (Прием сообщения)** | < 3% на всплеске (не более 50 мс) | < 5% (генерация выполняется на стороне LLM API) |
+| **Время отклика UI** | < 16 мс (60 FPS анимации) | — |
+| **Задержка ответа подсказки** | — | < 800–1200 мс (включая стриминг от API) |
+
+---
+
+## 7. Безопасность и этические стандарты
+
+1. **Изоляция секретов:** Ни один API-ключ не хранится в коде Chrome Extension и не попадает в браузерные логи. Ключи находятся исключительно в файле `.env` на диске оператора и используются только демоном.
+2. **Защита от сканирования:** Локальный порт демона слушает **строго `127.0.0.1`** (петлевой интерфейс), закрыт от внешних подключений по локальной сети и защищен валидацией Origin и X-Token.
+3. **Этика операторской работы:** Система является **интеллектуальным ассистентом (copilot)**, а не спам-ботом. Полностью исключена скрытая автономная рассылка или автоматическая отправка без ведома оператора.
