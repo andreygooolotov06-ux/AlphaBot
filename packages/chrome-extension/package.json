@@ -1,15 +1,19 @@
 {
   "name": "@alphadate/chrome-extension",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Chrome Extension (Manifest V3, Preact) for AlphaDate Personal AI",
-  "dependencies": {
-    "@alphadate/contracts": "*"
+  "scripts": {
+    "build": "vite build && node -e \"const fs = require('node:fs'); fs.copyFileSync('manifest.json', 'dist/manifest.json'); console.log('✓ Copied manifest.json to dist');\"",
+    "typecheck": "tsc --noEmit"
   },
-  "devDependencies": {
+  "dependencies": {
+    "@alphadate/contracts": "*",
+    "@preact/signals": "^1.3.0",
     "preact": "^10.20.1"
   },
-  "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
   }
 }

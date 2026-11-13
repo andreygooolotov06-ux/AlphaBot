@@ -4,15 +4,37 @@ import {
   MemoryRecord,
 } from '@alphadate/contracts';
 
+export interface IMemoryStorageBackend {
+  getByProfile(profileId: string): MemoryRecord[];
+  store(record: Omit<MemoryRecord, 'id' | 'createdAt' | 'updatedAt'>): MemoryRecord;
+  delete(id: string): boolean;
+}
+
 export class MemoryManager implements IMemoryManager {
-  // In-memory / storage adapter placeholder (SQLite backing implemented by Agent 2)
-  private memoryCache: Map<string, MemoryRecord[]> = new Map();
+  private inMemoryCache: Map<string, MemoryRecord[]> = new Map();
+  private backend: IMemoryStorageBackend | null = null;
+
+  constructor(backend?: IMemoryStorageBackend) {
+    this.backend = backend ?? null;
+  }
+
+  public setBackend(backend: IMemoryStorageBackend): void {
+    this.backend = backend;
+  }
 
   public async search(query: MemoryQuery): Promise<MemoryRecord[]> {
-    const records = this.memoryCache.get(query.profileId) ?? [];
+    let records: MemoryRecord[] = [];
+
+    if (this.backend) {
+      records = this.backend.getByProfile(query.profileId);
+    } else {
+      records = this.inMemoryCache.get(query.profileId) ?? [];
+    }
+
     if (!query.categories || query.categories.length === 0) {
       return records.slice(0, query.limit ?? 20);
     }
+
     return records
       .filter((r) => query.categories!.includes(r.category))
       .slice(0, query.limit ?? 20);
@@ -21,6 +43,10 @@ export class MemoryManager implements IMemoryManager {
   public async store(
     recordData: Omit<MemoryRecord, 'id' | 'createdAt' | 'updatedAt'>
   ): Promise<MemoryRecord> {
+    if (this.backend) {
+      return this.backend.store(recordData);
+    }
+
     const now = Date.now();
     const newRecord: MemoryRecord = {
       ...recordData,
@@ -29,9 +55,9 @@ export class MemoryManager implements IMemoryManager {
       updatedAt: now,
     };
 
-    const existing = this.memoryCache.get(recordData.profileId) ?? [];
+    const existing = this.inMemoryCache.get(recordData.profileId) ?? [];
     existing.push(newRecord);
-    this.memoryCache.set(recordData.profileId, existing);
+    this.inMemoryCache.set(recordData.profileId, existing);
 
     return newRecord;
   }
@@ -39,15 +65,19 @@ export class MemoryManager implements IMemoryManager {
   public async summarizeContext(profileId: string): Promise<string> {
     const records = await this.search({ profileId });
     if (records.length === 0) return 'No prior profile memory recorded.';
-    return records.map((r) => `[${r.category}] ${r.key}: ${r.value}`).join('\n');
+    return records.map((r) => `• [${r.category}] ${r.key}: ${r.value}`).join('\n');
   }
 
   public async deleteRecord(id: string): Promise<boolean> {
-    for (const [profileId, records] of this.memoryCache.entries()) {
+    if (this.backend) {
+      return this.backend.delete(id);
+    }
+
+    for (const [profileId, records] of this.inMemoryCache.entries()) {
       const idx = records.findIndex((r) => r.id === id);
       if (idx !== -1) {
         records.splice(idx, 1);
-        this.memoryCache.set(profileId, records);
+        this.inMemoryCache.set(profileId, records);
         return true;
       }
     }

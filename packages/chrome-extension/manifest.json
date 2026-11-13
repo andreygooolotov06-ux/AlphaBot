@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "AlphaDate Personal AI",
+  "version": "1.0.0",
+  "description": "Персональный AI-ассистент оператора для браузера с поддержкой мульти-диалогов",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:4789/*",
+    "ws://127.0.0.1:4790/*"
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Открыть AlphaDate AI"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
