@@ -422,7 +422,7 @@
         #ad-response-textarea {
           width: 100%;
           flex: 1;
-          min-height: 180px;
+          min-height: 160px;
           background: rgba(9, 13, 20, 0.95);
           border: 1px solid rgba(139, 92, 246, 0.3);
           border-radius: 12px;
@@ -442,6 +442,29 @@
         #ad-response-textarea:focus {
           border-color: #8b5cf6;
           box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+        }
+
+        /* Russian Translation Box for Operator */
+        #ad-response-translation-box {
+          background: rgba(15, 23, 42, 0.85);
+          border: 1px solid rgba(139, 92, 246, 0.25);
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: 11.5px;
+          line-height: 1.45;
+          color: #cbd5e1;
+          max-height: 85px;
+          overflow-y: auto;
+          user-select: text !important;
+          -webkit-user-select: text !important;
+        }
+
+        #ad-response-translation-box b {
+          color: #60a5fa;
+        }
+
+        #ad-response-translation-text {
+          color: #f1f5f9;
         }
 
         /* Style Morphing Chips */
@@ -671,14 +694,23 @@
 
           <!-- Main Response Terminal -->
           <div id="ad-response-terminal">
-            <textarea id="ad-response-textarea" placeholder="Бот готов. Откройте чат или нажмите 'Сгенерировать' (F8)..."></textarea>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+              <span style="font-size:11px; font-weight:700; color:#c084fc;">🇬🇧 Ответ в чат (English):</span>
+              <span id="ad-insert-status" style="font-size:10px; color:#94a3b8;">Готов к генерации</span>
+            </div>
+            <textarea id="ad-response-textarea" placeholder="Бот готов. Откройте диалог на alpha.date или нажмите 'Обновить' (F8)..."></textarea>
             
+            <!-- Russian Translation Card -->
+            <div id="ad-response-translation-box">
+              <b>🇷🇺 Перевод для оператора:</b> <span id="ad-response-translation-text">(здесь появится перевод ответа)</span>
+            </div>
+
             <!-- Quick Morph Chips -->
             <div class="ad-chips-row">
-              <span class="ad-chip" data-style="balanced">✨ Сбалансированно</span>
-              <span class="ad-chip" data-style="bolder">😏 Добавить дерзости</span>
-              <span class="ad-chip" data-style="softer">❤️ Больше нежности</span>
-              <span class="ad-chip" data-style="hot">🔥 Горячее</span>
+              <span class="ad-chip" data-style="balanced">✨ Базовый</span>
+              <span class="ad-chip" data-style="bolder">😏 Дерзко (вызов)</span>
+              <span class="ad-chip" data-style="softer">❤️ Нежно (кокетство)</span>
+              <span class="ad-chip" data-style="frame">🛡️ Фрейм (отказ на контакты)</span>
             </div>
           </div>
 
@@ -863,13 +895,25 @@
     const url = window.location.href.toLowerCase();
 
     // 1. URL pattern check
-    if (/letter|mail|inbox|compose|message\/view|correspondence/.test(url)) {
+    if (url.includes('/letters') || /letter|mail|inbox|compose|correspondence/.test(url)) {
       currentEnvironment = 'letters';
       updateEnvironmentUI();
       return 'letters';
     }
 
-    // 2. DOM markers check
+    // 2. Letters button or menu active check on Alpha.date
+    const letterBtn = document.querySelector('[data-testid="letters-button"], [data-testid="main-menu-item-Letters"]');
+    if (letterBtn) {
+      const cls = letterBtn.className || '';
+      const aria = letterBtn.getAttribute('aria-selected');
+      if (cls.includes('active') || cls.includes('selected') || cls.includes('Mui-selected') || aria === 'true') {
+        currentEnvironment = 'letters';
+        updateEnvironmentUI();
+        return 'letters';
+      }
+    }
+
+    // 3. Fallback DOM markers
     const letterMarkers = document.querySelectorAll(
       '[data-testid*="letter"], .letter-view, .mail-body, textarea[name*="letter"], textarea[placeholder*="письм"], textarea[rows="10"], [class*="letter-content"]'
     );
@@ -910,78 +954,107 @@
   }
 
   // ==========================================================================
-  // 5. Context & Interlocutor Scraper
+  // 5. Context & Interlocutor Scraper for Alpha.date
   // ==========================================================================
 
   function scrapeClientContext(): any {
     let manName = 'Мужчина', manAge = '—', manId = 'unknown', manPlace = '', girlInfo = 'Девушка', balance = '';
 
-    // Check header info
-    const chatHeader = document.querySelector('[data-testid="chat-header"], [class*="chat_head-"], [class*="ChatHeader"], [class*="chat-header"]');
-    if (chatHeader) {
-      const nameEl = chatHeader.querySelector('[data-testid="man-name"], [class*="chat_head_profile_name-"], [class*="user-name"], h2, h3');
-      if (nameEl) {
-        const raw = (nameEl as HTMLElement).innerText || '';
-        const m = raw.match(/([^,]+),\s*(\d{1,3})/);
-        if (m) {
-          manName = m[1]!.trim();
-          manAge = m[2]!.trim();
-        } else if (raw.trim()) {
-          manName = raw.trim();
-        }
+    // 1. Man Name and Age on Alpha.date: [data-testid="man-name"] (e.g. "luis Lopez, 26")
+    const manNameEl = document.querySelector('[data-testid="man-name"], [class*="chat_head_profile_name-"], [class*="user-name"]');
+    if (manNameEl) {
+      const raw = (manNameEl as HTMLElement).innerText || '';
+      const m = raw.match(/([^,]+),\s*(\d{1,3})/);
+      if (m) {
+        manName = m[1]!.trim();
+        manAge = m[2]!.trim();
+      } else if (raw.trim()) {
+        manName = raw.trim();
       }
-
-      const idWrap = chatHeader.querySelector('.ot4et-man-id-balance-wrap, [data-testid="balance"]') || chatHeader;
-      if (idWrap) {
-        const text = (idWrap as HTMLElement).innerText || '';
-        const idMatch = text.match(/ID\s*[:]?\s*(\d{5,15})/i);
-        if (idMatch) manId = idMatch[1]!.trim();
-        const bMatch = text.match(/(?:Balance|Баланс|Credits|Points|Балы)\s*[:]?\s*([\d\s.,]+)/i);
-        if (bMatch) balance = bMatch[1]!.trim();
-      }
-
-      const placeEl = chatHeader.querySelector('[data-testid="man-place"], [class*="location"]');
-      if (placeEl) manPlace = ((placeEl as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
     }
 
-    // Check Girl Name
-    const girlEl = document.querySelector('[data-testid="girl-name"], [class*="girl_name"], [class*="lady_name"]');
-    if (girlEl) {
-      const gRaw = (girlEl as HTMLElement).innerText || '';
-      if (gRaw.trim()) girlInfo = gRaw.trim();
+    // 2. Active Chat ID from URL (e.g. https://alpha.date/chat/8eubddc1-ho1vgjxr-xr65f2lp-1ayvz25q)
+    const urlMatch = window.location.href.match(/\/(?:chat|letters)\/([a-zA-Z0-9_-]+)/);
+    if (urlMatch) {
+      manId = urlMatch[1]!;
     }
 
-    // Extract Message History
-    const msgNodes = document.querySelectorAll(
-      '[data-testid^="received-message-"], [data-testid^="sent-message-"], [class*="message-item"], [class*="message-bubble"], .message-in, .message-out, .msg-item'
-    );
+    // 3. Woman Profile on Alpha.date: [data-testid="woman-name"], [data-testid="woman-external_id"], [data-testid="woman-place"]
+    const womanNameEl = document.querySelector('[data-testid="woman-name"]');
+    const womanIdEl = document.querySelector('[data-testid="woman-external_id"]');
+    const womanPlaceEl = document.querySelector('[data-testid="woman-place"]');
+    if (womanNameEl) {
+      const wName = (womanNameEl as HTMLElement).innerText?.trim() || '';
+      const wId = (womanIdEl as HTMLElement)?.innerText?.trim() || '';
+      const wPlace = (womanPlaceEl as HTMLElement)?.innerText?.trim() || '';
+      girlInfo = `${wName} (${wId}${wPlace ? ', ' + wPlace : ''})`;
+    } else {
+      const girlEl = document.querySelector('[data-testid="girl-name"], [class*="girl_name"], [class*="lady_name"]');
+      if (girlEl) {
+        const gRaw = (girlEl as HTMLElement).innerText || '';
+        if (gRaw.trim()) girlInfo = gRaw.trim();
+      }
+    }
+
+    // 4. Message History Extraction for Alpha.date
+    // In Alpha.date, message text has [data-testid="content"]!
+    const contentNodes = Array.from(document.querySelectorAll('[data-testid="content"]'));
     const dialogueLines: string[] = [];
+    let lastManMessage = '';
 
-    msgNodes.forEach((node) => {
-      const testId = node.getAttribute('data-testid') || '';
-      const className = node.className || '';
-      const isMan = testId.startsWith('received-message') || className.includes('received') || className.includes('message-in') || className.includes('incoming');
-      const isGirl = testId.startsWith('sent-message') || className.includes('sent') || className.includes('message-out') || className.includes('outgoing');
-      if (!isMan && !isGirl) return;
+    if (contentNodes.length > 0) {
+      // Find chat container to determine horizontal alignment (incoming=left, outgoing=right)
+      const chatCol = document.querySelector('[class*="clmn_3"], [data-testid="message"]')?.closest('div[class*="clmn"]') || document.body;
+      const colRect = chatCol.getBoundingClientRect();
 
-      const textNode = node.querySelector('[data-testid="message-text"], [class*="text"], .message-content') || node;
-      const clean = ((textNode as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
-      if (clean) {
-        dialogueLines.push(`${isMan ? 'Мужчина' : 'Девушка (Ты)'}: ${clean}`);
-      }
-    });
+      contentNodes.forEach((node) => {
+        const text = ((node as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+        if (!text) return;
+
+        const parent = node.closest('[class*="message"], [class*="msg"], div') || node;
+        const pClass = (parent.className || '') + ' ' + (node.className || '');
+        const isExplicitIncoming = /incoming|received|left|theirs|partner/.test(pClass);
+        const isExplicitOutgoing = /outgoing|sent|right|mine|self|operator/.test(pClass);
+
+        let isMan = false;
+        if (isExplicitIncoming) {
+          isMan = true;
+        } else if (isExplicitOutgoing) {
+          isMan = false;
+        } else {
+          // Geometric alignment test: left half = Man, right half = Operator/Girl
+          const nodeRect = node.getBoundingClientRect();
+          const nodeMid = nodeRect.left + nodeRect.width / 2;
+          const colMid = colRect.left + colRect.width / 2;
+          isMan = nodeMid < colMid;
+        }
+
+        if (isMan) {
+          dialogueLines.push(`Мужчина: ${text}`);
+          lastManMessage = text;
+        } else {
+          dialogueLines.push(`Девушка (Ты): ${text}`);
+        }
+      });
+    } else {
+      // Generic fallback
+      const msgNodes = document.querySelectorAll(
+        '[data-testid^="received-message-"], [data-testid^="sent-message-"], [class*="message-item"], [class*="message-bubble"], .message-in, .message-out, .msg-item'
+      );
+      msgNodes.forEach((node) => {
+        const testId = node.getAttribute('data-testid') || '';
+        const className = node.className || '';
+        const isMan = testId.startsWith('received-message') || className.includes('received') || className.includes('message-in') || className.includes('incoming');
+        const textNode = node.querySelector('[data-testid="message-text"], [class*="text"], .message-content') || node;
+        const clean = ((textNode as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+        if (clean) {
+          dialogueLines.push(`${isMan ? 'Мужчина' : 'Девушка (Ты)'}: ${clean}`);
+          if (isMan) lastManMessage = clean;
+        }
+      });
+    }
 
     const cleanChat = dialogueLines.slice(-25).join('\n');
-
-    // Last message from man
-    let lastManMessage = '';
-    for (let i = dialogueLines.length - 1; i >= 0; i--) {
-      const line = dialogueLines[i]!;
-      if (line.startsWith('Мужчина:')) {
-        lastManMessage = line.replace(/^Мужчина:\s*/, '').trim();
-        break;
-      }
-    }
 
     // Selected text priority hook
     const selectedText = (window.getSelection()?.toString() || '').trim();
@@ -989,8 +1062,9 @@
     // Update Ribbon in HUD
     const titleEl = document.getElementById('ad-client-title');
     const balanceEl = document.getElementById('ad-client-balance');
-    if (titleEl) titleEl.textContent = `${manName}, ${manAge} · ID: ${manId}`;
-    if (balanceEl) balanceEl.textContent = balance ? `💰 ${balance}` : `ID: ${manId}`;
+    const shortId = manId !== 'unknown' ? (manId.length > 12 ? `${manId.slice(0, 8)}...` : manId) : '—';
+    if (titleEl) titleEl.textContent = `${manName}, ${manAge} · ${shortId}`;
+    if (balanceEl) balanceEl.textContent = girlInfo || `ID: ${shortId}`;
 
     activeClient = {
       id: manId !== 'unknown' ? `ID_${manId}` : `${manName}_${manAge}`,
@@ -1017,11 +1091,14 @@
     isGenerating = true;
 
     const textarea = document.getElementById('ad-response-textarea') as HTMLTextAreaElement | null;
+    const transText = document.getElementById('ad-response-translation-text');
     const stratEl = document.getElementById('ad-tactics-strategy');
     const archEl = document.getElementById('ad-tactics-archetype');
 
-    if (textarea) textarea.value = '✦ Собираю контекст и формулирую ответ...';
+    if (textarea) textarea.value = '✦ Собираю контекст диалога и готовлю ответ...';
+    if (transText) transText.textContent = 'Анализ психотипа и подбор стратегии...';
     if (stratEl) stratEl.textContent = 'Анализ психотипа...';
+    updateInsertBadge(false);
 
     try {
       detectEnvironment();
@@ -1058,17 +1135,22 @@
       const data = res.data;
       lastGeneratedReply = data;
 
-      // Update UI
-      if (textarea) textarea.value = data.main_text_ru || data.main_text_en || '';
+      // Update UI with English text in main terminal and Russian translation in box
+      const replyEn = data.main_text_en || data.main_text_ru || '';
+      const replyRu = data.main_text_ru || '';
+
+      if (textarea) textarea.value = replyEn;
+      if (transText) transText.textContent = replyRu;
       if (archEl) archEl.textContent = data.archetype || 'Собеседник';
       if (stratEl) stratEl.textContent = data.strategy || 'Подготовка ответа';
 
-      // Auto-insert if Auto-Pilot is active! (DOES NOT SEND)
+      // Auto-pilot: Automatically insert English reply into Alpha.date chat (NEVER SENDS AUTOMATICALLY)
       if (isAutoPilotEnabled) {
         insertActiveReplyIntoSite();
       }
     } catch (e: any) {
       if (textarea) textarea.value = `Ошибка генерации: ${e.message}`;
+      if (transText) transText.textContent = 'Проверьте API ключ и подключение к интернету.';
     } finally {
       isGenerating = false;
     }
@@ -1080,43 +1162,35 @@
 
   function insertActiveReplyIntoSite(): boolean {
     const textarea = document.getElementById('ad-response-textarea') as HTMLTextAreaElement | null;
-    const textToInsert = textarea?.value?.trim() || lastGeneratedReply?.main_text_ru || '';
+    // Primary text to insert is the English response for Alpha.date
+    const textToInsert = textarea?.value?.trim() || lastGeneratedReply?.main_text_en || lastGeneratedReply?.main_text_ru || '';
     if (!textToInsert) return false;
 
     // 1. Letters Mode Insertion
     if (currentEnvironment === 'letters') {
       const letterTextarea = document.querySelector(
-        'textarea[name*="letter"], textarea[placeholder*="письм"], textarea[rows="10"], .letter-textarea, textarea'
+        'textarea[data-testid="letter-message"], textarea[name*="letter"], textarea[placeholder*="письм"], textarea[rows="10"], textarea[data-testid="message"]'
       ) as HTMLTextAreaElement | null;
 
       if (letterTextarea) {
         letterTextarea.focus();
         setTextareaNativeValue(letterTextarea, textToInsert);
+        updateInsertBadge(true);
         showCosmicToast('✉️ Письмо вставлено в редактор (проверьте и отправьте)!');
         return true;
       }
     }
 
-    // 2. Chat Mode Insertion (Left RU textarea with translation arrow)
-    const textareas = Array.from(document.querySelectorAll('textarea[data-testid="text"]'))
-      .filter((node: any) => {
-        const rect = node.getBoundingClientRect();
-        const style = getComputedStyle(node);
-        return rect.width > 20 && rect.height > 20 && style.display !== 'none' && style.visibility !== 'hidden';
-      })
-      .sort((a: any, b: any) => a.getBoundingClientRect().left - b.getBoundingClientRect().left) as HTMLTextAreaElement[];
+    // 2. Alpha.date Chat Textarea: textarea[data-testid="message"] (class clmn_3_chat_textarea-U9reqN)
+    const chatInput = document.querySelector(
+      'textarea[data-testid="message"], textarea.clmn_3_chat_textarea-U9reqN, textarea[placeholder*="message"], textarea[name="message"]'
+    ) as HTMLTextAreaElement | null;
 
-    const leftTextarea = textareas[0] || null;
-    if (leftTextarea) {
-      leftTextarea.focus();
-      setTextareaNativeValue(leftTextarea, textToInsert);
-
-      // Trigger translation arrow
-      const arrows = Array.from(document.querySelectorAll('[data-testid="change-languages-btn"]')) as HTMLElement[];
-      if (arrows.length > 0) {
-        setTimeout(() => arrows[0]?.click(), 220);
-      }
-      showCosmicToast('⚡ Ответ вставлен в чат и переведен (НЕ отправлен)!');
+    if (chatInput) {
+      chatInput.focus();
+      setTextareaNativeValue(chatInput, textToInsert);
+      updateInsertBadge(true);
+      showCosmicToast('⚡ Ответ на английском вставлен в чат (НЕ отправлен)!');
       return true;
     }
 
@@ -1124,18 +1198,20 @@
     const activeEl = document.activeElement as HTMLElement | null;
     if (activeEl instanceof HTMLTextAreaElement || (activeEl instanceof HTMLInputElement && activeEl.type === 'text')) {
       setTextareaNativeValue(activeEl as any, textToInsert);
+      updateInsertBadge(true);
       showCosmicToast('⚡ Вставлено в активное поле!');
       return true;
     }
 
-    const anyTextarea = document.querySelector('textarea, [contenteditable="true"], input[type="text"]') as HTMLElement | null;
+    const anyTextarea = document.querySelector('textarea, [contenteditable="true"]') as HTMLElement | null;
     if (anyTextarea) {
-      if (anyTextarea instanceof HTMLTextAreaElement || anyTextarea instanceof HTMLInputElement) {
-        setTextareaNativeValue(anyTextarea as any, textToInsert);
+      if (anyTextarea instanceof HTMLTextAreaElement) {
+        setTextareaNativeValue(anyTextarea, textToInsert);
       } else {
         anyTextarea.focus();
         document.execCommand('insertText', false, textToInsert);
       }
+      updateInsertBadge(true);
       showCosmicToast('⚡ Вставлено в поле!');
       return true;
     }
@@ -1143,6 +1219,19 @@
     navigator.clipboard.writeText(textToInsert);
     showCosmicToast('📋 Скопировано в буфер обмена!');
     return false;
+  }
+
+  function updateInsertBadge(inserted: boolean): void {
+    const badge = document.getElementById('ad-insert-status');
+    if (badge) {
+      if (inserted) {
+        badge.textContent = '⚡ Вставлен в чат (не отправлен)';
+        badge.style.color = '#34d399';
+      } else {
+        badge.textContent = 'Готов к вставке';
+        badge.style.color = '#94a3b8';
+      }
+    }
   }
 
   function setTextareaNativeValue(element: HTMLTextAreaElement | HTMLInputElement, val: string): void {
@@ -1242,14 +1331,27 @@
     const chips = document.querySelectorAll('.ad-chip');
     chips.forEach((chip) => {
       chip.addEventListener('click', (e) => {
-        const style = (e.target as HTMLElement).getAttribute('data-style') || '';
-        if (style === 'bolder' && lastGeneratedReply?.alt_bolder_ru) {
-          const textarea = document.getElementById('ad-response-textarea') as HTMLTextAreaElement;
-          if (textarea) textarea.value = lastGeneratedReply.alt_bolder_ru;
-        } else if (style === 'softer' && lastGeneratedReply?.alt_softer_ru) {
-          const textarea = document.getElementById('ad-response-textarea') as HTMLTextAreaElement;
-          if (textarea) textarea.value = lastGeneratedReply.alt_softer_ru;
-        } else {
+        const style = (e.currentTarget as HTMLElement).getAttribute('data-style') || '';
+        const textarea = document.getElementById('ad-response-textarea') as HTMLTextAreaElement;
+        const transEl = document.getElementById('ad-response-translation-text');
+
+        if (style === 'bolder' && lastGeneratedReply?.alt_bolder_en) {
+          if (textarea) textarea.value = lastGeneratedReply.alt_bolder_en;
+          if (transEl) transEl.textContent = lastGeneratedReply.alt_bolder_ru || '';
+          if (isAutoPilotEnabled) insertActiveReplyIntoSite();
+        } else if (style === 'softer' && lastGeneratedReply?.alt_softer_en) {
+          if (textarea) textarea.value = lastGeneratedReply.alt_softer_en;
+          if (transEl) transEl.textContent = lastGeneratedReply.alt_softer_ru || '';
+          if (isAutoPilotEnabled) insertActiveReplyIntoSite();
+        } else if (style === 'frame' && lastGeneratedReply?.alt_frame_en) {
+          if (textarea) textarea.value = lastGeneratedReply.alt_frame_en;
+          if (transEl) transEl.textContent = lastGeneratedReply.alt_frame_ru || '';
+          if (isAutoPilotEnabled) insertActiveReplyIntoSite();
+        } else if (style === 'balanced' && lastGeneratedReply?.main_text_en) {
+          if (textarea) textarea.value = lastGeneratedReply.main_text_en;
+          if (transEl) transEl.textContent = lastGeneratedReply.main_text_ru || '';
+          if (isAutoPilotEnabled) insertActiveReplyIntoSite();
+        } else if (style) {
           conductAutonomousFlow(style);
         }
       });
