@@ -650,6 +650,10 @@
             </div>
             <span class="ad-drawer-title" style="margin-top:4px;">📋 Правила оператора / образ девушки:</span>
             <textarea id="ad-settings-kb" class="ad-drawer-input" rows="2" placeholder="Особые инструкции..."></textarea>
+            
+            <button type="button" id="ad-btn-dump-dom" class="ad-chip" style="margin-top:6px; text-align:center; background:rgba(59,130,246,0.18); border-color:#3b82f6; color:#93c5fd; padding:7px; font-weight:600;">
+              🔬 Снять слепок структуры сайта (скопировать для архитектора)
+            </button>
           </div>
 
           <!-- Context & Client Ribbon -->
@@ -1253,6 +1257,53 @@
 
     // Settings Toggle
     document.getElementById('ad-btn-toggle-settings')!.onclick = toggleSettingsDrawer;
+
+    // Dump DOM Structure for Architect
+    const dumpBtn = document.getElementById('ad-btn-dump-dom');
+    if (dumpBtn) {
+      dumpBtn.onclick = () => {
+        const dump = {
+          url: window.location.href,
+          title: document.title,
+          textareas: Array.from(document.querySelectorAll('textarea')).map((t) => ({
+            id: t.id,
+            name: t.name,
+            testid: t.getAttribute('data-testid'),
+            placeholder: t.placeholder,
+            className: t.className,
+            visible: t.getBoundingClientRect().width > 0,
+            rect: { w: t.clientWidth, h: t.clientHeight },
+          })),
+          inputs: Array.from(document.querySelectorAll('input[type="text"], input:not([type])')).slice(0, 25).map((i: any) => ({
+            id: i.id,
+            name: i.name,
+            testid: i.getAttribute('data-testid'),
+            placeholder: i.placeholder,
+            className: i.className,
+          })),
+          buttons: Array.from(document.querySelectorAll('button, [role="button"]')).slice(0, 35).map((b: any) => ({
+            text: b.innerText?.trim()?.slice(0, 40),
+            testid: b.getAttribute('data-testid'),
+            className: b.className,
+          })),
+          testidElements: Array.from(document.querySelectorAll('[data-testid]')).slice(0, 60).map((el) => ({
+            testid: el.getAttribute('data-testid'),
+            tag: el.tagName,
+            sampleText: (el as HTMLElement).innerText?.trim()?.slice(0, 50),
+          })),
+          possibleMessages: Array.from(document.querySelectorAll('[class*="message"], [class*="msg"], [class*="chat_"], [class*="letter"]')).slice(0, 25).map((el) => ({
+            className: el.className,
+            tag: el.tagName,
+            sampleText: (el as HTMLElement).innerText?.trim()?.slice(0, 80),
+          })),
+        };
+
+        const jsonStr = JSON.stringify(dump, null, 2);
+        navigator.clipboard.writeText(jsonStr);
+        console.log('[AlphaDate DOM Dump]:', dump);
+        showCosmicToast('🔬 Слепок сайта скопирован в буфер! Отправьте его в чат.');
+      };
+    }
 
     // Save Settings
     document.getElementById('ad-btn-save-key')!.onclick = async () => {
