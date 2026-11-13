@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "AlphaDate Personal AI",
+  "version": "0.1.0",
+  "description": "Operator browser assistant powered by local AI Core",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:4789/*",
+    "ws://127.0.0.1:4790/*"
+  ],
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AlphaDate AI"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

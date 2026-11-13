@@ -1,0 +1,24 @@
+{
+  "name": "alphadate-personal-ai-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AlphaDate Personal AI — Modular AI assistant for operators",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run --workspaces build",
+    "typecheck": "npm run --workspaces typecheck",
+    "test": "npm run --workspaces test",
+    "clean": "npm run --workspaces clean"
+  },
+  "keywords": [
+    "ai",
+    "operator-assistant",
+    "chrome-extension",
+    "local-ai",
+    "typescript"
+  ],
+  "author": "AlphaDate Team",
+  "license": "UNLICENSED"
+}

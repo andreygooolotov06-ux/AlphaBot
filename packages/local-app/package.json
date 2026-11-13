@@ -1,0 +1,17 @@
+{
+  "name": "@alphadate/local-app",
+  "version": "0.1.0",
+  "description": "Local Node.js backend daemon and SQLite persistence for AlphaDate Personal AI",
+  "main": "./dist/index.js",
+  "dependencies": {
+    "@alphadate/contracts": "*",
+    "@alphadate/ai-core": "*",
+    "@alphadate/model-router": "*",
+    "@alphadate/memory-manager": "*"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  }
+}

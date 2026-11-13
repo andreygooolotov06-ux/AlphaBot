@@ -1,0 +1,14 @@
+{
+  "name": "@alphadate/model-router",
+  "version": "0.1.0",
+  "description": "Multi-provider AI Model Router for AlphaDate Personal AI",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@alphadate/contracts": "*"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  }
+}

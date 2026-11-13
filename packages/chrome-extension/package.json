@@ -1,0 +1,15 @@
+{
+  "name": "@alphadate/chrome-extension",
+  "version": "0.1.0",
+  "description": "Chrome Extension (Manifest V3, Preact) for AlphaDate Personal AI",
+  "dependencies": {
+    "@alphadate/contracts": "*"
+  },
+  "devDependencies": {
+    "preact": "^10.20.1"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  }
+}

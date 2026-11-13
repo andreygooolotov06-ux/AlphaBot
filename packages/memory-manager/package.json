@@ -1,0 +1,14 @@
+{
+  "name": "@alphadate/memory-manager",
+  "version": "0.1.0",
+  "description": "Context and long-term memory management for AlphaDate Personal AI",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@alphadate/contracts": "*"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@alphadate/ai-core",
+  "version": "0.1.0",
+  "description": "Independent query processing and suggestion pipeline for AlphaDate Personal AI",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@alphadate/contracts": "*",
+    "@alphadate/model-router": "*",
+    "@alphadate/memory-manager": "*"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  }
+}
